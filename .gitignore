@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+release/
+
+# App data folder created next to the app (never commit: holds imported HA data)
+LabelData/
+
+# Local environment
+.env
+.env.*
+
+# OS / tooling noise
+.DS_Store
+Thumbs.db
+*.log
+.eslintcache
