@@ -3,6 +3,7 @@ import { formatExpiry, parseExpiry } from '../../core/expiry'
 import { encodeInternalGtin, PACK_VOLUMES, type PackVolumeDigit } from '../../core/internalGtin'
 import { describeItemList, formatFileDate, isLiquid, itemListProblems, type ItemListEntry, type ItemListInfo } from '../../core/itemList'
 import { buildLabel, type BuildLabelResult, type FieldMessage, type LabelField, type LabelRequest } from '../../core/label'
+import { itemCodeFromScan, type ScanSource } from '../../core/scanInput'
 import type { ItemLookup, PrintOutcome } from '../../preload/api'
 import type { PcSettings } from '../../render/printSettings'
 import { AppHeader } from './AppHeader'
@@ -41,6 +42,15 @@ type Lookup =
   | { readonly code: string; readonly stamp: string; readonly status: 'unknown' }
   | { readonly code: string; readonly stamp: string; readonly status: 'failed'; readonly message: string }
 
+/** What the scan-input parser made of the Item Code field (on Enter or leaving it), for the value then in the field. */
+type ItemCodeScan = { readonly value: string; readonly source: ScanSource } | { readonly value: string; readonly error: string }
+
+const SCAN_SOURCE_HINTS: Record<ScanSource, string | null> = {
+  typed: null,
+  'shelf-qr': 'From shelf label',
+  'bag-label-ip': 'From in-patient dispensing-bag label'
+}
+
 /** Upper-cases a–z as staff type (Caps Lock need not matter); the label core does the same. */
 function upperCaseAscii(value: string): string {
   return value.replace(/[a-z]/g, (letter) => letter.toUpperCase())
@@ -71,6 +81,7 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
   const [lookup, setLookup] = useState<Lookup | null>(null)
   const [packVolume, setPackVolume] = useState<PackVolumeDigit | null>(null)
   const [unknownDialogFor, setUnknownDialogFor] = useState<string | null>(null)
+  const [scan, setScan] = useState<ItemCodeScan | null>(null)
   /** Where focus goes once the screen has updated (and any dialog has closed). */
   const [pendingFocus, setPendingFocus] = useState<'itemCode' | 'packVolume' | 'expiry' | null>(null)
   const [printing, setPrinting] = useState(false)
@@ -129,7 +140,12 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
   const visibleErrors = (field: FormField): string[] =>
     touched.has(field) || values[field].trim().length >= COMPLETE_LENGTH[field] ? messagesFor(errors, field) : []
   const awaitingLookup = itemErrors.some((error) => error.message === LOOKUP_PENDING || error.message === LOOKUP_RUNNING)
-  const itemCodeErrors = visibleErrors('itemCode').filter((message) => message !== LOOKUP_PENDING && message !== LOOKUP_RUNNING)
+  const currentScan = scan && scan.value === values.itemCode ? scan : null
+  // An unrecognised scan says so in place of the label core's Item Code format messages.
+  const itemCodeErrors =
+    currentScan && 'error' in currentScan
+      ? [currentScan.error]
+      : visibleErrors('itemCode').filter((message) => message !== LOOKUP_PENDING && message !== LOOKUP_RUNNING)
   const packVolumeErrors = touched.has('packVolume') ? messagesFor(errors, 'packVolume') : []
 
   const parsedExpiry = parseExpiry(values.expiry)
@@ -173,11 +189,32 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
   function change(field: FormField, value: string): void {
     const next = field === 'itemCode' || field === 'lot' ? upperCaseAscii(value) : value
     if (field === 'itemCode' && next !== values.itemCode) {
+      setScan(null)
       setPackVolume(null)
       setTouched((previous) => new Set([...previous].filter((name) => name !== 'packVolume')))
     }
     setValues((previous) => ({ ...previous, [field]: next }))
     setOutcome(null)
+  }
+
+  /**
+   * Runs the scan-input parser on the Item Code field (Enter or leaving it): a shelf QR, an in-patient
+   * dispensing-bag label or surrounding spaces are replaced by the Item Code, which is returned for
+   * lookup; an unrecognised value stays as it is, with an error, and null is returned.
+   */
+  function takeItemCode(): string | null {
+    const raw = values.itemCode
+    if (raw === '') return null // the label core asks for an Item Code
+    const scanned = itemCodeFromScan(raw)
+    if (!scanned.ok) {
+      setScan({ value: raw, error: scanned.message })
+      return null
+    }
+    if (scanned.itemCode !== raw) {
+      change('itemCode', scanned.itemCode)
+      setScan({ value: scanned.itemCode, source: scanned.source })
+    }
+    return scanned.itemCode
   }
 
   /**
@@ -247,7 +284,8 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
     event.preventDefault()
     touch(field)
     if (field === 'itemCode') {
-      void checkItemCode(values.itemCode, 'always').then(focusAfterItemCode)
+      const code = takeItemCode()
+      if (code !== null) void checkItemCode(code, 'always').then(focusAfterItemCode)
       return
     }
     const next = FORM_FIELDS[FORM_FIELDS.indexOf(field) + 1]
@@ -265,8 +303,11 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
       onChange: (event: React.ChangeEvent<HTMLInputElement>) => change(field, event.target.value),
       onBlur: () => {
         touch(field)
-        // Leaving the Item Code looks it up; a newly found unknown one opens the dialog.
-        if (field === 'itemCode' && unknownDialogFor === null) void checkItemCode(values.itemCode, 'if-new')
+        // Leaving the Item Code takes it from a scan and looks it up; a newly found unknown one opens the dialog.
+        if (field === 'itemCode' && unknownDialogFor === null) {
+          const code = takeItemCode()
+          if (code !== null) void checkItemCode(code, 'if-new')
+        }
       },
       onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => handleKeyDown(field, event),
       'aria-invalid': invalid,
@@ -277,7 +318,13 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
     }
   }
 
-  const itemCodeHint = currentLookup?.status === 'checking' ? LOOKUP_RUNNING : awaitingLookup ? LOOKUP_PENDING : '6 characters, e.g. PARA01'
+  const scanHint = currentScan && 'source' in currentScan ? SCAN_SOURCE_HINTS[currentScan.source] : null
+  const itemCodeHint =
+    currentLookup?.status === 'checking'
+      ? LOOKUP_RUNNING
+      : awaitingLookup
+        ? LOOKUP_PENDING
+        : (scanHint ?? '6 characters, e.g. PARA01, or scan a label')
 
   return (
     <div className="screen" hidden={hidden}>

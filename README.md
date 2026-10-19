@@ -46,6 +46,8 @@ The app keeps its data in `LabelData\` next to the portable `.exe` (in developme
 
 On the label screen, an Item Code must be in the Item List: its drug name shows on screen (never on the label), and a liquid (base unit `ML`) needs a Pack Volume choice, 30 / 60 / 120 / 240 / 480 mL or Other (Pack Volume digit 0). An unknown Item Code cannot be printed; a dialog offers to import a newer Item List. The main process checks the Item List again before every print.
 
+The Item Code field also takes a scan (keyboard-wedge scanner, Enter suffix). On Enter or on leaving the field, the Item Code is taken from a plain 6-character code (typed, or an out-patient dispensing-bag label), a shelf QR `ITEMCODE_BIN_<hash>` or PMH's plain `ITEMCODE_BIN` (BIN of 2–6 letters or digits), or a 13-character in-patient dispensing-bag label (4 letters or digits, the Item Code, 3 letters or digits; 13 digits is an EAN-13 and is refused). Spaces inside an Item Code are kept; spaces around it are trimmed only when the value fits no pattern as it is. Anything else is refused with "Not an Item Code, shelf label or dispensing-bag label." ([`src/core/scanInput.ts`](src/core/scanInput.ts)).
+
 `.dat` files are sealed (`TDCP`, a format version byte, HMAC-SHA256, gzipped JSON) and replaced atomically, so a file changed outside the app is refused and other PCs never read a half-written one. Sealing stops casual edits; it is not encryption.
 
 ## Internal GTIN test cases
