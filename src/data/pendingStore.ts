@@ -138,7 +138,7 @@ async function takeLock(dataFolder: string, deps: PendingStoreDeps): Promise<{ o
         return { ok: false, message: `The Pending Labels could not be locked: ${errorText(error)}` }
       }
     }
-    if (await breakStaleLock(path, deps.now())) continue
+    if (await breakStaleLock(path)) continue
     if (attempt >= LOCK_RETRY_DELAYS_MS.length) {
       return { ok: false, message: 'The Pending Labels are being changed on another PC. Try again in a moment.' }
     }
@@ -147,13 +147,18 @@ async function takeLock(dataFolder: string, deps: PendingStoreDeps): Promise<{ o
 }
 
 /**
- * Removes the lock if it is stale. It is renamed away first and only then deleted, so a PC that
- * judged the same lock stale a moment later finds it gone instead of deleting a new lock.
+ * Removes the lock if it is stale. Its age is judged by the file server's clock, not this PC's: "now"
+ * is the saved time of a temporary file made in the data folder (a PC with a wrong clock must not
+ * break a live lock). The lock is renamed away first and only then deleted, so a PC that judged the
+ * same lock stale a moment later finds it gone instead of deleting a new lock.
  */
-async function breakStaleLock(path: string, now: Date): Promise<boolean> {
+async function breakStaleLock(path: string): Promise<boolean> {
+  const clock = `${path}.clock-${randomUUID()}`
   try {
-    const stats = await stat(path)
-    if (now.getTime() - stats.mtimeMs < STALE_LOCK_MS) return false
+    const lockStats = await stat(path)
+    await (await open(clock, 'wx')).close()
+    const serverNow = (await stat(clock)).mtimeMs
+    if (serverNow - lockStats.mtimeMs < STALE_LOCK_MS) return false
     const aside = `${path}.stale-${randomUUID()}`
     await rename(path, aside)
     await unlink(aside).catch(() => undefined)
@@ -161,6 +166,8 @@ async function breakStaleLock(path: string, now: Date): Promise<boolean> {
   } catch (error) {
     // Gone already (released or broken by another PC): try to take it again.
     return errorCode(error) === 'ENOENT'
+  } finally {
+    await unlink(clock).catch(() => undefined)
   }
 }
 

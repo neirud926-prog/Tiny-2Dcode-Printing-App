@@ -82,6 +82,24 @@ describe('Pending Labels store', () => {
     expect(await readdir(folder)).toEqual(['pending.dat'])
   })
 
+  it('keeps a fresh lock even when this PC clock is far ahead of the file server', async () => {
+    const folder = await tempFolder()
+    await writeFile(pendingLockPath(folder), 'PHARM-02')
+    const result = await addPending(folder, input, deps(new Date(Date.now() + 10 * 60_000)))
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('another PC') })
+    expect(await readdir(folder)).toEqual(['pending.lock'])
+  })
+
+  it('takes over a lock older than the limit by the file server clock, whatever this PC clock says', async () => {
+    const folder = await tempFolder()
+    await writeFile(pendingLockPath(folder), 'PHARM-02 stopped mid-change')
+    const old = new Date(Date.now() - STALE_LOCK_MS - 1000)
+    await utimes(pendingLockPath(folder), old, old)
+    const result = await addPending(folder, input, { ...realDeps, now: () => new Date(Date.now() - 10 * 60_000) })
+    expect(result.ok).toBe(true)
+    expect(await readdir(folder)).toEqual(['pending.dat'])
+  })
+
   it('does not write a file that was changed outside the app', async () => {
     const folder = await tempFolder()
     await writeFile(pendingPath(folder), 'not a sealed file')
