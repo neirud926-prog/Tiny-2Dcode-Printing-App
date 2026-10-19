@@ -1,0 +1,3 @@
+# Month-only expiry is encoded as day 01, not GS1's 00
+
+When a pack shows only a month and year, AI (17) is encoded as `YYMM01` (12/2027 → `271201`), not GS1's `YYMM00` ("end of month"). Reading expiry as the first of the month is the safe side for a pharmacy, and BCS's Main Store check compares year and month only, so matching is unaffected; the cost is that short-expiry alerts can fire up to a month early. Labels already in circulation carry this encoding, so do not "correct" it to `00`. Expiry is always entered as 8 digits (`ddmmyyyy`), so for a month-only pack staff type day `01` themselves.
