@@ -1,0 +1,173 @@
+import { readdir, readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import type { LabelRequest } from '../core/label'
+import { appendPrintLog, PRINT_LOG_HEADER } from '../data/printLog'
+import { tempFolder } from '../data/testFolder'
+import { DOT_MM } from '../render/dataMatrix'
+import type { LabelPrintJob } from '../render/printJob'
+import type { PcSettings } from '../render/printSettings'
+import { printLabelRequest, printTestLabel, printerProblem, type DriverResult, type PrintServiceDeps } from './printService'
+
+const request: LabelRequest = { itemCode: 'para18', packVolumeDigit: 2, expiry: '31122027', lot: '2512172-1', copies: 3 }
+
+const settings: PcSettings = {
+  printerName: 'ZDesigner GX420t',
+  labelSize: { widthMm: 30, heightMm: 20 },
+  offsetXmm: 2 * DOT_MM,
+  offsetYmm: 0,
+  logFolder: null
+}
+
+/** 19 Oct 2026 14:03:07 local time. */
+const now = new Date(2026, 9, 19, 14, 3, 7)
+
+/** A print service over a temp data folder, with a fake printer that records each job. */
+async function setup(driver: DriverResult | Error = { ok: true }) {
+  const dataFolder = await tempFolder()
+  const jobs: LabelPrintJob[] = []
+  const deps: PrintServiceDeps = {
+    now: () => now,
+    sendToPrinter: async (job) => {
+      jobs.push(job)
+      if (driver instanceof Error) throw driver
+      return driver
+    },
+    appendLog: appendPrintLog
+  }
+  const context = { dataFolder, pcName: 'PHARM-01', windowsUser: 'chantm' }
+  const logFile = join(dataFolder, 'logs', 'print-log-2026-10-PHARM-01.csv')
+  return { dataFolder, jobs, deps, context, logFile }
+}
+
+describe('printLabelRequest', () => {
+  it('prints on the configured printer, page size and copies', async () => {
+    const { jobs, deps, context } = await setup()
+    const outcome = await printLabelRequest(request, settings, context, deps)
+    expect(outcome).toEqual({ ok: true, message: 'Printed 3 labels on ZDesigner GX420t.', warning: null })
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0].options).toMatchObject({
+      silent: true,
+      deviceName: 'ZDesigner GX420t',
+      pageSize: { width: 30_000, height: 20_000 },
+      copies: 3,
+      margins: { marginType: 'none' }
+    })
+    expect(jobs[0].html).toContain('@page{size:30mm 20mm;margin:0}')
+  })
+
+  it('adds exactly one print log line per print, with the label fields', async () => {
+    const { deps, context, logFile } = await setup()
+    await printLabelRequest(request, settings, context, deps)
+    await printLabelRequest({ ...request, copies: 1 }, settings, context, deps)
+    const lines = (await readFile(logFile, 'utf8')).trimEnd().split('\r\n')
+    expect(lines).toEqual([
+      PRINT_LOG_HEADER.join(','),
+      '2026-10-19 14:03:07,chantm,PHARM-01,PARA18,60,20425873440489,2027-12-31,2512172-1,3',
+      '2026-10-19 14:03:07,chantm,PHARM-01,PARA18,60,20425873440489,2027-12-31,2512172-1,1'
+    ])
+  })
+
+  it('says "1 label" for one copy', async () => {
+    const { deps, context } = await setup()
+    expect(await printLabelRequest({ ...request, copies: 1 }, settings, context, deps)).toMatchObject({ message: 'Printed 1 label on ZDesigner GX420t.' })
+  })
+
+  it('writes the log to the chosen log folder', async () => {
+    const { deps, context } = await setup()
+    const logFolder = await tempFolder()
+    await printLabelRequest(request, { ...settings, logFolder }, context, deps)
+    expect(await readdir(logFolder)).toEqual(['print-log-2026-10-PHARM-01.csv'])
+  })
+
+  it('rebuilds and checks the label itself, refusing what the label core refuses', async () => {
+    const { jobs, deps, context, logFile } = await setup()
+    // Expired by the main process's own clock, whatever the renderer thought.
+    const outcome = await printLabelRequest({ ...request, expiry: '18102026' }, settings, context, deps)
+    expect(outcome).toEqual({ ok: false, message: 'Not printed: This Expiry (18 OCT 2026) has already passed.' })
+    expect(jobs).toEqual([])
+    await expect(readFile(logFile)).rejects.toThrow(/ENOENT/)
+  })
+
+  it('refuses a request that is not a label request', async () => {
+    const { jobs, deps, context } = await setup()
+    for (const bad of [null, 'PARA01', { ...request, copies: '3' }, { ...request, lot: undefined }]) {
+      expect(await printLabelRequest(bad, settings, context, deps)).toEqual({ ok: false, message: 'Not printed: the label request is not valid.' })
+    }
+    expect(jobs).toEqual([])
+  })
+
+  it('refuses to print before this PC is set up', async () => {
+    const { jobs, deps, context } = await setup()
+    expect(await printLabelRequest(request, null, context, deps)).toEqual({ ok: false, message: "Not printed: set up this PC's printer first." })
+    expect(jobs).toEqual([])
+  })
+
+  it("reports the driver's reason and logs nothing when the print fails", async () => {
+    const { deps, context, logFile } = await setup({ ok: false, reason: 'Print job failed' })
+    expect(await printLabelRequest(request, settings, context, deps)).toEqual({ ok: false, message: 'Not printed: the printer reported "Print job failed".' })
+    await expect(readFile(logFile)).rejects.toThrow(/ENOENT/)
+  })
+
+  it('reports a print that throws, with no reason given', async () => {
+    const empty = await setup({ ok: false, reason: '' })
+    expect(await printLabelRequest(request, settings, empty.context, empty.deps)).toEqual({ ok: false, message: 'Not printed: the printer reported a failure.' })
+    const thrown = await setup(new Error('Invalid deviceName provided'))
+    expect(await printLabelRequest(request, settings, thrown.context, thrown.deps)).toEqual({
+      ok: false,
+      message: 'Not printed: Invalid deviceName provided'
+    })
+  })
+
+  it('still reports the print when the log cannot be written', async () => {
+    const { deps, context } = await setup()
+    const outcome = await printLabelRequest(request, settings, context, {
+      ...deps,
+      appendLog: async () => {
+        throw new Error('EACCES: permission denied')
+      }
+    })
+    expect(outcome).toEqual({
+      ok: true,
+      message: 'Printed 3 labels on ZDesigner GX420t.',
+      warning: 'The print log could not be written: EACCES: permission denied'
+    })
+  })
+})
+
+describe('printTestLabel', () => {
+  it('prints one TEST01 sample label with the given settings and logs nothing', async () => {
+    const { jobs, deps, logFile } = await setup()
+    const outcome = await printTestLabel(settings, deps)
+    expect(outcome).toEqual({
+      ok: true,
+      message: 'Test label sent to ZDesigner GX420t. If it is not centred on the label, adjust the offsets.',
+      warning: null
+    })
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0].options).toMatchObject({ deviceName: 'ZDesigner GX420t', pageSize: { width: 30_000, height: 20_000 }, copies: 1 })
+    expect(jobs[0].html).toContain('TEST01')
+    expect(jobs[0].html).toContain('01 OCT 2027')
+    await expect(readFile(logFile)).rejects.toThrow(/ENOENT/)
+  })
+
+  it("reports the driver's reason", async () => {
+    const { deps } = await setup({ ok: false, reason: 'Invalid printer settings' })
+    expect(await printTestLabel(settings, deps)).toEqual({ ok: false, message: 'Test print failed: the printer reported "Invalid printer settings".' })
+  })
+})
+
+describe('printerProblem', () => {
+  const installed = [
+    { name: 'ZDesigner GX420t', displayName: 'ZDesigner GX420t' },
+    { name: 'Office_Laser', displayName: 'Office Laser' }
+  ]
+
+  it('accepts an installed printer', () => {
+    expect(printerProblem('Office_Laser', installed)).toBeNull()
+  })
+
+  it('names a printer that is not installed', () => {
+    expect(printerProblem('Zebra', installed)).toBe('The printer "Zebra" is not installed on this PC. Choose another printer.')
+  })
+})

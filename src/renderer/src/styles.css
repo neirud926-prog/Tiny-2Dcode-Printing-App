@@ -261,3 +261,227 @@ p {
   font-family: Consolas, 'Cascadia Mono', Menlo, monospace;
   color: var(--text);
 }
+
+[hidden] {
+  display: none !important;
+}
+
+.starting {
+  padding: 24px;
+  color: var(--muted);
+}
+
+/* Header: printer and Settings */
+
+.app-header__end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  align-self: center;
+}
+
+.header-info {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.header-info strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Buttons */
+
+.button {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 7px 18px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.button--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.button--small {
+  font-size: 13px;
+  padding: 4px 12px;
+}
+
+.button:disabled {
+  border-color: var(--border);
+  background: #eaecf0;
+  color: #98a2b3;
+  cursor: default;
+}
+
+.button:focus-visible,
+.print-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.print-button:not(:disabled) {
+  cursor: pointer;
+}
+
+/* Print and save results */
+
+.outcome {
+  margin-top: 12px;
+}
+
+.outcome__message {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.outcome__message--ok {
+  color: var(--ok);
+  background: var(--ok-surface);
+}
+
+.outcome__message--error {
+  color: var(--error);
+  background: var(--error-surface);
+}
+
+.outcome .message--warning {
+  margin-top: 6px;
+}
+
+/* Setup step "Printer" and Settings */
+
+.settings-layout {
+  display: flex;
+  justify-content: center;
+  padding: 20px 24px;
+}
+
+.settings {
+  width: 100%;
+  max-width: 640px;
+}
+
+.settings__intro {
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.settings__notice {
+  margin-bottom: 16px;
+}
+
+.field select {
+  font: inherit;
+  font-size: 16px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 100%;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.field select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.field select.invalid {
+  border-color: var(--error);
+  background: var(--error-surface);
+}
+
+.field-group {
+  border: 0;
+  padding: 0;
+  margin: 0 0 14px;
+}
+
+.field-group legend {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.field-row {
+  display: flex;
+  gap: 24px;
+}
+
+.field-row .field {
+  margin-bottom: 4px;
+}
+
+.field--number label {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.field input.number {
+  width: 7em;
+}
+
+.field__unit,
+.field__note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.field__label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.field__buttons {
+  margin-top: 8px;
+}
+
+.folder-path {
+  font-family: Consolas, 'Cascadia Mono', Menlo, monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  background: #f9fafb;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+/* A problem that stops the app */
+
+.full-screen-message {
+  max-width: 680px;
+  margin: 64px auto;
+  padding: 24px 28px;
+  background: var(--error-surface);
+  border: 1px solid var(--error);
+  border-radius: 8px;
+}
+
+.full-screen-message h2 {
+  color: var(--error);
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.full-screen-message__detail {
+  margin-top: 10px;
+  color: var(--muted);
+  font-family: Consolas, 'Cascadia Mono', Menlo, monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}

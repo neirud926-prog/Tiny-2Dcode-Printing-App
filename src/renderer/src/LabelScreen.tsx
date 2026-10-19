@@ -1,7 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
 import { formatExpiry, parseExpiry } from '../../core/expiry'
-import { buildLabel, type FieldMessage, type LabelField } from '../../core/label'
+import { buildLabel, type FieldMessage, type LabelField, type LabelRequest } from '../../core/label'
+import type { PrintOutcome } from '../../preload/api'
+import type { PcSettings } from '../../render/printSettings'
+import { AppHeader } from './AppHeader'
 import { LabelPreview } from './LabelPreview'
+import { OutcomeMessage } from './OutcomeMessage'
 import { useToday } from './today'
 
 type FormField = 'itemCode' | 'expiry' | 'lot' | 'copies'
@@ -24,27 +28,32 @@ function parseCopies(value: string): number {
   return /^[0-9]{1,3}$/.test(value.trim()) ? Number(value.trim()) : Number.NaN
 }
 
+interface LabelScreenProps {
+  settings: PcSettings
+  onOpenSettings(): void
+  hidden?: boolean
+}
+
 /** The label screen: the form on the left, the live preview and self-check on the right. */
-export function LabelScreen(): React.JSX.Element {
+export function LabelScreen({ settings, onOpenSettings, hidden = false }: LabelScreenProps): React.JSX.Element {
   const today = useToday()
   const [values, setValues] = useState<FormValues>(EMPTY_FORM)
   const [touched, setTouched] = useState<ReadonlySet<FormField>>(new Set())
+  const [printing, setPrinting] = useState(false)
+  const [outcome, setOutcome] = useState<PrintOutcome | null>(null)
   const inputs = useRef<Partial<Record<FormField, HTMLInputElement | null>>>({})
 
-  const result = useMemo(
-    () =>
-      buildLabel(
-        {
-          itemCode: values.itemCode,
-          packVolumeDigit: 0, // Pack Volume is chosen once the Item List says which items are liquids.
-          expiry: values.expiry,
-          lot: values.lot,
-          copies: parseCopies(values.copies)
-        },
-        { today }
-      ),
-    [values, today]
+  const request = useMemo<LabelRequest>(
+    () => ({
+      itemCode: values.itemCode,
+      packVolumeDigit: 0, // Pack Volume is chosen once the Item List says which items are liquids.
+      expiry: values.expiry,
+      lot: values.lot,
+      copies: parseCopies(values.copies)
+    }),
+    [values]
   )
+  const result = useMemo(() => buildLabel(request, { today }), [request, today])
 
   const errors = result.ok ? [] : result.errors
   const messagesFor = (list: FieldMessage[], field: LabelField): string[] =>
@@ -61,6 +70,21 @@ export function LabelScreen(): React.JSX.Element {
 
   function change(field: FormField, value: string): void {
     setValues((previous) => ({ ...previous, [field]: field === 'itemCode' || field === 'lot' ? upperCaseAscii(value) : value }))
+    setOutcome(null)
+  }
+
+  /** Sends the request (not the label): the main process rebuilds and self-checks it before printing. */
+  async function print(): Promise<void> {
+    if (!result.ok || printing) return
+    setPrinting(true)
+    setOutcome(null)
+    try {
+      setOutcome(await window.api.printLabel(request))
+    } catch (error) {
+      setOutcome({ ok: false, message: `Not printed: ${String(error)}` })
+    } finally {
+      setPrinting(false)
+    }
   }
 
   function handleKeyDown(field: FormField, event: React.KeyboardEvent<HTMLInputElement>): void {
@@ -96,11 +120,15 @@ export function LabelScreen(): React.JSX.Element {
   }
 
   return (
-    <div className="screen">
-      <header className="app-header">
-        <h1>Tiny 2D-code Printing App</h1>
-        <span className="app-header__note">GS1 DataMatrix labels · Internal GTIN, Expiry, Lot</span>
-      </header>
+    <div className="screen" hidden={hidden}>
+      <AppHeader>
+        <span className="header-info">
+          Printer <strong>{settings.printerName}</strong>
+        </span>
+        <button type="button" className="button button--secondary button--small" onClick={onOpenSettings}>
+          Settings
+        </button>
+      </AppHeader>
 
       <main className="layout">
         <section className="panel form" aria-label="Label details">
@@ -130,14 +158,15 @@ export function LabelScreen(): React.JSX.Element {
           </Field>
 
           <div className="actions">
-            <button type="button" className="print-button" disabled title="Printing is not set up yet">
-              Print
+            <button type="button" className="print-button" disabled={!result.ok || printing} onClick={() => void print()}>
+              {printing ? 'Printing…' : 'Print'}
             </button>
-            <span className="actions__note">Printing is not set up yet.</span>
+            {!result.ok && !outcome && <span className="actions__note">Complete the label to print.</span>}
           </div>
+          <OutcomeMessage outcome={outcome} />
         </section>
 
-        <LabelPreview result={result} />
+        <LabelPreview result={result} size={settings.labelSize} />
       </main>
     </div>
   )
