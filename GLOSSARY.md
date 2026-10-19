@@ -37,7 +37,7 @@ The daily Oracle report "HA: INV Stock onhand with lot details" of the lots, exp
 _Avoid_: stock list, inventory file
 
 **Pending Label**:
-A label request whose Item Code is not yet in the Item List, kept until a newer Item List is imported.
+A label request whose Item Code is not yet in the Item List, kept until a newer Item List is imported. One whose Expiry has passed is Expired and can only be deleted.
 _Avoid_: follow-up (BCS uses Follow-up for Not Match scans), to-do
 
 ### Labels scanned in

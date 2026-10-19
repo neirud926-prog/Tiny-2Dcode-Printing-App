@@ -3,7 +3,7 @@
  * `pending.dat` until a newer Item List lists the code. Pure: no Electron, no file access.
  */
 
-import { parseExpiry } from './expiry'
+import { expiryHasPassed, parseExpiry } from './expiry'
 import { isLiquid, lookupItem, type ItemIndex } from './itemList'
 import type { LabelRequest } from './label'
 
@@ -74,9 +74,7 @@ export function pendingCounts(labels: readonly PendingLabelView[]): { ready: num
 /** Whether the Expiry is before `today` (`yyyy-mm-dd`); the day itself has not passed. */
 export function isExpired(label: Pick<PendingLabel, 'expiry'>, today: string): boolean {
   const parsed = parseExpiry(label.expiry)
-  if (!parsed.ok) return false
-  const { year, month, day } = parsed.expiry
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` < today
+  return parsed.ok && expiryHasPassed(parsed.expiry, today)
 }
 
 /** The label request for a Pending Label; a non-liquid has no Pack Volume, so null counts as 0 (none). */

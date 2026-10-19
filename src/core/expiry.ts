@@ -84,6 +84,13 @@ export function parseIsoDate(iso: string): CalendarDate | null {
   return match ? validDate(Number(match[1]), Number(match[2]), Number(match[3])) : null
 }
 
+/** Whether `expiry` is before `today` (`yyyy-mm-dd`); the day itself has not passed. */
+export function expiryHasPassed(expiry: CalendarDate, today: string): boolean {
+  const todayDate = parseIsoDate(today)
+  if (!todayDate) throw new Error(`today must be a date as yyyy-mm-dd; got ${JSON.stringify(today)}`)
+  return compareDates(expiry, todayDate) < 0
+}
+
 export type CheckExpiryResult = { ok: true; warning: string | null } | { ok: false; message: string }
 
 /**
@@ -92,12 +99,10 @@ export type CheckExpiryResult = { ok: true; warning: string | null } | { ok: fal
  * not passed. Throws if `today` is malformed, which is a programming error.
  */
 export function checkExpiry(expiry: CalendarDate, today: string): CheckExpiryResult {
-  const todayDate = parseIsoDate(today)
-  if (!todayDate) throw new Error(`today must be a date as yyyy-mm-dd; got ${JSON.stringify(today)}`)
-
-  if (compareDates(expiry, todayDate) < 0) {
+  if (expiryHasPassed(expiry, today)) {
     return { ok: false, message: `This Expiry (${formatExpiry(expiry)}) has already passed.` }
   }
+  const todayDate = parseIsoDate(today)! // expiryHasPassed above threw if it was malformed
   if (expiry.year - todayDate.year > GS1_MAX_YEARS_AHEAD) {
     return {
       ok: false,

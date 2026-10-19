@@ -150,7 +150,8 @@ async function takeLock(dataFolder: string, deps: PendingStoreDeps): Promise<{ o
  * Removes the lock if it is stale. Its age is judged by the file server's clock, not this PC's: "now"
  * is the saved time of a temporary file made in the data folder (a PC with a wrong clock must not
  * break a live lock). The lock is renamed away first and only then deleted, so a PC that judged the
- * same lock stale a moment later finds it gone instead of deleting a new lock.
+ * same lock stale a moment later finds it gone instead of deleting a new lock. This narrows the
+ * window for two PCs breaking one lock at once; it cannot close it, which is enough for a few PCs.
  */
 async function breakStaleLock(path: string): Promise<boolean> {
   const clock = `${path}.clock-${randomUUID()}`
@@ -159,6 +160,8 @@ async function breakStaleLock(path: string): Promise<boolean> {
     await (await open(clock, 'wx')).close()
     const serverNow = (await stat(clock)).mtimeMs
     if (serverNow - lockStats.mtimeMs < STALE_LOCK_MS) return false
+    // Another PC may have broken this lock and taken a new one meanwhile: only the lock judged stale goes.
+    if ((await stat(path)).mtimeMs !== lockStats.mtimeMs) return false
     const aside = `${path}.stale-${randomUUID()}`
     await rename(path, aside)
     await unlink(aside).catch(() => undefined)

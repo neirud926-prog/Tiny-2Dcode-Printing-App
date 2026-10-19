@@ -4,7 +4,7 @@
  * printing it (through the same checks, self-check and print log as any label) and deleting it.
  */
 
-import { formatExpiry, localIsoDate, parseExpiry } from '../core/expiry'
+import { expiryHasPassed, formatExpiry, localIsoDate, parseExpiry } from '../core/expiry'
 import { isLiquid, lookupItem, type ItemIndex } from '../core/itemList'
 import { buildLabel } from '../core/label'
 import { isExpired, pendingLabelRequest, viewPendingLabels, type PendingLabelInput } from '../core/pendingLabel'
@@ -66,9 +66,9 @@ export async function printPendingLabel(
   const pending = read.labels.find((label) => label.id === id)
   if (!pending) return refused('that Pending Label is no longer there; another PC may have printed or deleted it.')
   const item = lookupItem(itemList, pending.itemCode)
-  if (isExpired(pending, localIsoDate(deps.now()))) {
-    const expiry = parseExpiry(pending.expiry)
-    return refused(`${pending.itemCode} has expired (Expiry ${expiry.ok ? formatExpiry(expiry.expiry) : pending.expiry}); delete it.`)
+  const expiry = parseExpiry(pending.expiry)
+  if (expiry.ok && expiryHasPassed(expiry.expiry, localIsoDate(deps.now()))) {
+    return refused(`${pending.itemCode} has expired (Expiry ${formatExpiry(expiry.expiry)}); delete it.`)
   }
   if (!item) return refused(`${pending.itemCode} is not in the Item List yet.`)
 
