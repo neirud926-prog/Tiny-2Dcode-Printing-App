@@ -1,10 +1,21 @@
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron'
 import { errorText } from '../data/atomicWrite'
 import { checkDataFolder, checkFolderWritable } from '../data/dataFolder'
+import { createItemListSource } from '../data/itemListStore'
 import { defaultLogFolder, loadPcSettings, resolveLogFolder, savePcSettings } from '../data/pcSettings'
 import { appendPrintLog } from '../data/printLog'
-import { IPC_CHANNELS, type AppStartup, type PreloadApi, type PrinterChoice, type PrintOutcome, type SaveSettingsOutcome } from '../preload/api'
+import {
+  IPC_CHANNELS,
+  type AppStartup,
+  type ImportItemListOutcome,
+  type ItemLookup,
+  type PreloadApi,
+  type PrinterChoice,
+  type PrintOutcome,
+  type SaveSettingsOutcome
+} from '../preload/api'
 import { normalisePcSettings, type PcSettings } from '../render/printSettings'
+import { itemLookupFor } from './itemLookup'
 import { printerProblem, printLabelRequest, printTestLabel, type PrintContext, type PrintServiceDeps } from './printService'
 import { sendToPrinter } from './printWindow'
 
@@ -15,11 +26,13 @@ export interface IpcContext extends PrintContext {
 
 /**
  * Handles the preload API. Everything the renderer sends is validated here; the renderer can name
- * a log folder only by choosing it in the system dialog (or the default), and never sends markup.
+ * a log folder or an Item List file only by choosing it in the system dialog (or the default), and
+ * never sends markup.
  */
 export function registerIpc(context: IpcContext): void {
   const { dataFolder, pcName } = context
   const deps: PrintServiceDeps = { now: () => new Date(), sendToPrinter, appendLog: appendPrintLog }
+  const itemLists = createItemListSource(dataFolder)
 
   /** True once the data folder passed its write check. */
   let folderReady = false
@@ -30,11 +43,17 @@ export function registerIpc(context: IpcContext): void {
 
   const handlers: { [K in keyof PreloadApi]: (event: IpcMainInvokeEvent, arg: unknown) => ReturnType<PreloadApi[K]> } = {
     getStartup,
+    importItemList,
+    lookupItem,
     listPrinters: (event) => installedPrinters(event),
     chooseLogFolder,
     testPrint,
     savePrinterSettings,
-    printLabel: (_event, request) => exclusively(() => printLabelRequest(request, folderReady ? settings : null, context, deps))
+    printLabel: (_event, request) =>
+      exclusively(async () => {
+        const itemList = folderReady ? await itemLists.current() : null
+        return printLabelRequest(request, folderReady ? settings : null, itemList?.index ?? null, context, deps)
+      })
   }
 
   for (const method of Object.keys(handlers) as (keyof PreloadApi)[]) {
@@ -56,14 +75,43 @@ export function registerIpc(context: IpcContext): void {
     const loaded = await loadPcSettings(dataFolder, pcName)
     settings = loaded.status === 'ok' ? loaded.settings : null
     if (settings?.logFolder) allowedLogFolders.add(settings.logFolder)
+    const items = await itemLists.load()
     return {
       status: 'ready',
       pcName,
       dataFolder,
       defaultLogFolder: defaultLogFolder(dataFolder),
       settings,
-      settingsNotice: loaded.status === 'tampered' || loaded.status === 'unreadable' ? `${loaded.message} Set up the printer again.` : null
+      settingsNotice: loaded.status === 'tampered' || loaded.status === 'unreadable' ? `${loaded.message} Set up the printer again.` : null,
+      itemList: items.status === 'ok' ? items.list.info : null,
+      itemListNotice: items.status === 'tampered' || items.status === 'unreadable' ? `${items.message} Import the Item List again.` : null
     }
+  }
+
+  async function importItemList(event: IpcMainInvokeEvent): Promise<ImportItemListOutcome> {
+    if (!folderReady) return { status: 'refused', message: 'The data folder is not ready.', summary: null, badRows: [], warning: null }
+    const options: OpenDialogOptions = {
+      title: 'Import the Item List (item_phq.txt)',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Item List (*.txt)', extensions: ['txt'] },
+        { name: 'All files', extensions: ['*'] }
+      ]
+    }
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const chosen = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    const file = chosen.canceled ? undefined : chosen.filePaths[0]
+    if (!file) return { status: 'cancelled' }
+    return itemLists.importFile(file, {
+      logFolder: settings ? resolveLogFolder(dataFolder, settings) : defaultLogFolder(dataFolder),
+      pcName,
+      windowsUser: context.windowsUser,
+      now: () => new Date()
+    })
+  }
+
+  async function lookupItem(_event: IpcMainInvokeEvent, itemCode: unknown): Promise<ItemLookup> {
+    return itemLookupFor(folderReady ? await itemLists.current() : null, itemCode)
   }
 
   async function chooseLogFolder(event: IpcMainInvokeEvent): Promise<string | null> {

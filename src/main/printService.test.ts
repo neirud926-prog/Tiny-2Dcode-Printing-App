@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { indexItems } from '../core/itemList'
 import type { LabelRequest } from '../core/label'
 import { appendPrintLog, PRINT_LOG_HEADER } from '../data/printLog'
 import { tempFolder } from '../data/testFolder'
@@ -18,6 +19,11 @@ const settings: PcSettings = {
   offsetYmm: 0,
   logFolder: null
 }
+
+const itemList = indexItems([
+  { itemCode: 'PARA01', name: 'SYNTHETIC FICTAMOL TABLET 500MG', baseUnit: 'TAB' },
+  { itemCode: 'PARA18', name: 'SYNTHETIC FICTAMOL ORAL SOLUTION', baseUnit: 'ML' }
+])
 
 /** 19 Oct 2026 14:03:07 local time. */
 const now = new Date(2026, 9, 19, 14, 3, 7)
@@ -43,7 +49,7 @@ async function setup(driver: DriverResult | Error = { ok: true }) {
 describe('printLabelRequest', () => {
   it('prints on the configured printer, page size and copies', async () => {
     const { jobs, deps, context } = await setup()
-    const outcome = await printLabelRequest(request, settings, context, deps)
+    const outcome = await printLabelRequest(request, settings, itemList, context, deps)
     expect(outcome).toEqual({ ok: true, message: 'Printed 3 labels on ZDesigner GX420t.', warning: null })
     expect(jobs).toHaveLength(1)
     expect(jobs[0].options).toMatchObject({
@@ -58,8 +64,8 @@ describe('printLabelRequest', () => {
 
   it('adds exactly one print log line per print, with the label fields', async () => {
     const { deps, context, logFile } = await setup()
-    await printLabelRequest(request, settings, context, deps)
-    await printLabelRequest({ ...request, copies: 1 }, settings, context, deps)
+    await printLabelRequest(request, settings, itemList, context, deps)
+    await printLabelRequest({ ...request, copies: 1 }, settings, itemList, context, deps)
     const lines = (await readFile(logFile, 'utf8')).trimEnd().split('\r\n')
     expect(lines).toEqual([
       PRINT_LOG_HEADER.join(','),
@@ -70,50 +76,90 @@ describe('printLabelRequest', () => {
 
   it('says "1 label" for one copy', async () => {
     const { deps, context } = await setup()
-    expect(await printLabelRequest({ ...request, copies: 1 }, settings, context, deps)).toMatchObject({ message: 'Printed 1 label on ZDesigner GX420t.' })
+    expect(await printLabelRequest({ ...request, copies: 1 }, settings, itemList, context, deps)).toMatchObject({ message: 'Printed 1 label on ZDesigner GX420t.' })
   })
 
   it('writes the log to the chosen log folder', async () => {
     const { deps, context } = await setup()
     const logFolder = await tempFolder()
-    await printLabelRequest(request, { ...settings, logFolder }, context, deps)
+    await printLabelRequest(request, { ...settings, logFolder }, itemList, context, deps)
     expect(await readdir(logFolder)).toEqual(['print-log-2026-10-PHARM-01.csv'])
   })
 
   it('rebuilds and checks the label itself, refusing what the label core refuses', async () => {
     const { jobs, deps, context, logFile } = await setup()
     // Expired by the main process's own clock, whatever the renderer thought.
-    const outcome = await printLabelRequest({ ...request, expiry: '18102026' }, settings, context, deps)
+    const outcome = await printLabelRequest({ ...request, expiry: '18102026' }, settings, itemList, context, deps)
     expect(outcome).toEqual({ ok: false, message: 'Not printed: This Expiry (18 OCT 2026) has already passed.' })
     expect(jobs).toEqual([])
     await expect(readFile(logFile)).rejects.toThrow(/ENOENT/)
   })
 
+  it('refuses an Item Code that is not in the Item List, whatever the renderer allowed', async () => {
+    const { jobs, deps, context, logFile } = await setup()
+    const outcome = await printLabelRequest({ ...request, itemCode: 'para99', packVolumeDigit: 0 }, settings, itemList, context, deps)
+    expect(outcome).toEqual({ ok: false, message: 'Not printed: PARA99 is not in the Item List.' })
+    expect(jobs).toEqual([])
+    await expect(readFile(logFile)).rejects.toThrow(/ENOENT/)
+  })
+
+  it('refuses a Pack Volume for an item that is not a liquid', async () => {
+    const { jobs, deps, context } = await setup()
+    const outcome = await printLabelRequest({ ...request, itemCode: 'PARA01', packVolumeDigit: 2 }, settings, itemList, context, deps)
+    expect(outcome).toEqual({ ok: false, message: 'Not printed: PARA01 is not a liquid (base unit TAB), so it has no Pack Volume.' })
+    expect(jobs).toEqual([])
+  })
+
+  it('prints a non-liquid with Pack Volume digit 0, and a liquid with any of 0–5', async () => {
+    const { deps, context, logFile } = await setup()
+    const requests = [
+      { ...request, itemCode: 'PARA01', packVolumeDigit: 0 },
+      ...[0, 1, 2, 3, 4, 5].map((packVolumeDigit) => ({ ...request, packVolumeDigit }))
+    ]
+    for (const each of requests) expect(await printLabelRequest(each, settings, itemList, context, deps)).toMatchObject({ ok: true })
+    const logged = (await readFile(logFile, 'utf8')).trimEnd().split('\r\n').slice(1).map((line) => line.split(','))
+    expect(logged.map((fields) => [fields[3], fields[4], fields[5][0]])).toEqual([
+      ['PARA01', '', '0'],
+      ['PARA18', '', '0'],
+      ['PARA18', '30', '1'],
+      ['PARA18', '60', '2'],
+      ['PARA18', '120', '3'],
+      ['PARA18', '240', '4'],
+      ['PARA18', '480', '5']
+    ])
+  })
+
+  it('refuses to print before the Item List is imported', async () => {
+    const { jobs, deps, context } = await setup()
+    expect(await printLabelRequest(request, settings, null, context, deps)).toEqual({ ok: false, message: 'Not printed: import the Item List first.' })
+    expect(jobs).toEqual([])
+  })
+
   it('refuses a request that is not a label request', async () => {
     const { jobs, deps, context } = await setup()
     for (const bad of [null, 'PARA01', { ...request, copies: '3' }, { ...request, lot: undefined }]) {
-      expect(await printLabelRequest(bad, settings, context, deps)).toEqual({ ok: false, message: 'Not printed: the label request is not valid.' })
+      expect(await printLabelRequest(bad, settings, itemList, context, deps)).toEqual({ ok: false, message: 'Not printed: the label request is not valid.' })
     }
     expect(jobs).toEqual([])
   })
 
   it('refuses to print before this PC is set up', async () => {
     const { jobs, deps, context } = await setup()
-    expect(await printLabelRequest(request, null, context, deps)).toEqual({ ok: false, message: "Not printed: set up this PC's printer first." })
+    expect(await printLabelRequest(request, null, itemList, context, deps)).toEqual({ ok: false, message: "Not printed: set up this PC's printer first." })
     expect(jobs).toEqual([])
   })
 
   it("reports the driver's reason and logs nothing when the print fails", async () => {
     const { deps, context, logFile } = await setup({ ok: false, reason: 'Print job failed' })
-    expect(await printLabelRequest(request, settings, context, deps)).toEqual({ ok: false, message: 'Not printed: the printer reported "Print job failed".' })
+    expect(await printLabelRequest(request, settings, itemList, context, deps)).toEqual({ ok: false, message: 'Not printed: the printer reported "Print job failed".' })
     await expect(readFile(logFile)).rejects.toThrow(/ENOENT/)
   })
 
   it('reports a print that throws, with no reason given', async () => {
     const empty = await setup({ ok: false, reason: '' })
-    expect(await printLabelRequest(request, settings, empty.context, empty.deps)).toEqual({ ok: false, message: 'Not printed: the printer reported a failure.' })
+    expect(await printLabelRequest(request, settings, itemList, empty.context, empty.deps)).toEqual({ ok: false, message: 'Not printed: the printer reported a failure.' })
     const thrown = await setup(new Error('Invalid deviceName provided'))
-    expect(await printLabelRequest(request, settings, thrown.context, thrown.deps)).toEqual({
+    expect(await printLabelRequest(request, settings, itemList, thrown.context, thrown.deps)).toEqual({
       ok: false,
       message: 'Not printed: Invalid deviceName provided'
     })
@@ -121,7 +167,7 @@ describe('printLabelRequest', () => {
 
   it('still reports the print when the log cannot be written', async () => {
     const { deps, context } = await setup()
-    const outcome = await printLabelRequest(request, settings, context, {
+    const outcome = await printLabelRequest(request, settings, itemList, context, {
       ...deps,
       appendLog: async () => {
         throw new Error('EACCES: permission denied')

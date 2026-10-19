@@ -25,6 +25,8 @@ interface PrinterSettingsScreenProps {
   notice?: string | null
   onSaved(settings: PcSettings): void
   onCancel?(): void
+  /** More Settings sections, shown below the printer settings (e.g. the Item List). */
+  children?: React.ReactNode
 }
 
 /** A label printer driver name is likely to contain one of these. */
@@ -38,7 +40,8 @@ export function PrinterSettingsScreen({
   initial = DEFAULT_PC_SETTINGS,
   notice = null,
   onSaved,
-  onCancel
+  onCancel,
+  children
 }: PrinterSettingsScreenProps): React.JSX.Element {
   const [printers, setPrinters] = useState<PrinterChoice[] | null>(null)
   const [printerName, setPrinterName] = useState(initial.printerName)
@@ -275,6 +278,7 @@ export function PrinterSettingsScreen({
           </div>
           <OutcomeMessage outcome={outcome} />
         </section>
+        {children}
       </main>
     </div>
   )

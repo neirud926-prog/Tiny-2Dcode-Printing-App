@@ -3,10 +3,13 @@
  * so it is tested end to end with a fake printer and a temp folder.
  *
  * The renderer sends only the label request. The label is rebuilt and self-checked here with the
- * main process's own date, so a label the label core would refuse can never reach the printer.
+ * main process's own date, and checked against the Item List (the Item Code must be listed; only a
+ * liquid has a Pack Volume), so a label the label core or the Item List would refuse can never reach
+ * the printer.
  */
 
 import { localIsoDate } from '../core/expiry'
+import { itemListProblems, lookupItem, type ItemIndex } from '../core/itemList'
 import { buildLabel, selfCheckLabel, type Label, type LabelRequest } from '../core/label'
 import { errorText } from '../data/atomicWrite'
 import { resolveLogFolder } from '../data/pcSettings'
@@ -31,19 +34,26 @@ export interface PrintContext {
   readonly windowsUser: string
 }
 
-/** Prints the label for `request` on this PC's printer and adds one print log line. */
+/**
+ * Prints the label for `request` on this PC's printer and adds one print log line. `itemList` is the
+ * Item List in use (null before one is imported).
+ */
 export async function printLabelRequest(
   request: unknown,
   settings: PcSettings | null,
+  itemList: ItemIndex | null,
   context: PrintContext,
   deps: PrintServiceDeps
 ): Promise<PrintOutcome> {
   if (settings === null) return refused("set up this PC's printer first.")
+  if (itemList === null) return refused('import the Item List first.')
   if (!isLabelRequest(request)) return refused('the label request is not valid.')
 
   const at = deps.now()
   const label = checkedLabel(request, localIsoDate(at))
   if (!label.ok) return refused(label.message)
+  const problems = itemListProblems(lookupItem(itemList, label.label.itemCode), label.label)
+  if (problems.length > 0) return refused(problems.map((problem) => problem.message).join(' '))
 
   const sent = await send(buildLabelPrintJob(label.label, settings), deps)
   if (!sent.ok) return refused(sent.message)
