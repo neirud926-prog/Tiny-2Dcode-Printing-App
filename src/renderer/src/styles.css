@@ -36,8 +36,9 @@ p {
 
 .app-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 16px;
+  gap: 4px 16px;
   padding: 12px 24px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -129,6 +130,14 @@ p {
 .field input.invalid {
   border-color: var(--error);
   background: var(--error-surface);
+}
+
+/* Lot and Expiry picked from Stock Onhand: read-only until "Type lot manually". */
+.field input.locked {
+  background: #eef4ff;
+  border: 1px dashed #84adff;
+  color: var(--text);
+  cursor: default;
 }
 
 .field__confirmation {
@@ -289,6 +298,11 @@ p {
 .header-info strong {
   color: var(--text);
   font-weight: 600;
+}
+
+.header-info--stale,
+.header-info--stale strong {
+  color: var(--warning);
 }
 
 /* Buttons */
@@ -651,4 +665,120 @@ p {
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
+}
+
+/* Lot picker: the item's Lots in today's Stock Onhand */
+
+.lot-picker {
+  border: 0;
+  padding: 0;
+  margin: 0 0 14px;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.lot-picker legend {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.lot-picker__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lot-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.lot-choice input {
+  margin: 0;
+}
+
+.lot-choice--selected {
+  border-color: var(--accent);
+  background: #eef4ff;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.lot-choice--disabled {
+  color: var(--muted);
+  background: #f9fafb;
+  cursor: not-allowed;
+}
+
+.lot-choice:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.lot-choice__text {
+  overflow-wrap: anywhere;
+}
+
+.lot-choice__lot {
+  font-family: Consolas, 'Cascadia Mono', Menlo, monospace;
+  font-weight: 600;
+  white-space: pre;
+}
+
+.lot-choice__sep {
+  color: var(--muted);
+}
+
+.lot-choice__expiry,
+.lot-choice__qty {
+  white-space: nowrap;
+}
+
+.lot-choice--disabled .lot-choice__lot {
+  text-decoration: line-through;
+}
+
+.lot-choice__note {
+  grid-column: 2;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lot-choice__note--warning {
+  color: var(--warning);
+}
+
+.lot-choice__note--error {
+  color: var(--error);
+}
+
+.lot-choice--manual {
+  color: var(--text);
+}
+
+.lot-picker__note {
+  margin: -6px 0 14px;
+}
+
+.lot-picker__stale {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.lot-picker__stale .outcome {
+  margin-top: 0;
+}
+
+.stale-note {
+  color: var(--warning);
+  font-weight: 600;
 }

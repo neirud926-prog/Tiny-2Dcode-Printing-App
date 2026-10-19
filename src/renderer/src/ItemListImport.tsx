@@ -1,46 +1,16 @@
-import { useState } from 'react'
 import { countOf, describeItemList, formatFileDate, type ItemListInfo } from '../../core/itemList'
 import type { ImportItemListOutcome } from '../../preload/api'
+import { useImport, type ImportState as GenericImportState } from './useImport'
 
-/** What the last import did, shown under the import button. */
-export type ImportState =
-  | { readonly status: 'idle' }
-  | { readonly status: 'importing' }
-  | {
-      readonly status: 'done'
-      readonly outcome: Exclude<ImportItemListOutcome, { status: 'cancelled' }>
-      /** The Item List in use before the import (kept if the file was refused). */
-      readonly previous: ItemListInfo | null
-    }
-  | { readonly status: 'error'; readonly message: string }
+/** What the last Item List import did, shown under the import button. */
+export type ImportState = GenericImportState<Exclude<ImportItemListOutcome, { status: 'cancelled' }>, ItemListInfo>
 
 /**
  * Runs an Item List import (the main process shows the file dialog) and remembers its outcome.
  * `onImported` hears about a newly imported Item List. `start` resolves with the outcome.
  */
 export function useItemListImport(current: ItemListInfo | null, onImported: (info: ItemListInfo) => void) {
-  const [state, setState] = useState<ImportState>({ status: 'idle' })
-
-  async function start(): Promise<ImportItemListOutcome | null> {
-    if (state.status === 'importing') return null
-    const previous = current
-    setState({ status: 'importing' })
-    try {
-      const outcome = await window.api.importItemList()
-      if (outcome.status === 'cancelled') {
-        setState({ status: 'idle' })
-      } else {
-        setState({ status: 'done', outcome, previous })
-        if (outcome.status === 'imported') onImported(outcome.info)
-      }
-      return outcome
-    } catch (error) {
-      setState({ status: 'error', message: String(error) })
-      return null
-    }
-  }
-
-  return { state, busy: state.status === 'importing', start, clear: () => setState({ status: 'idle' }) }
+  return useImport(() => window.api.importItemList(), current, onImported)
 }
 
 /** The outcome of the last import: its summary, or why the file was refused. */
@@ -81,7 +51,8 @@ export function ImportOutcome({ state }: { state: ImportState }): React.JSX.Elem
   )
 }
 
-function BadRows({ rows }: { rows: readonly { line: number; message: string }[] }): React.JSX.Element | null {
+/** The bad rows an import listed (it counts them all, but lists only the first few). */
+export function BadRows({ rows }: { rows: readonly { line: number; message: string }[] }): React.JSX.Element | null {
   if (rows.length === 0) return null
   return (
     <ul className="bad-rows">

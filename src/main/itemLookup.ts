@@ -1,6 +1,8 @@
 import { lookupItem } from '../core/itemList'
+import { stockLotsFor } from '../core/stockOnhand'
 import type { LoadedItemList } from '../data/itemListStore'
-import type { ItemLookup } from '../preload/api'
+import type { LoadedStockOnhand } from '../data/stockOnhandStore'
+import type { ItemLookup, StockLotsLookup } from '../preload/api'
 
 /** Longer input from the renderer is cut to this length in the reply (an Item Code has 6 characters). */
 const MAX_ECHOED_LENGTH = 32
@@ -12,4 +14,14 @@ export function itemLookupFor(list: LoadedItemList | null, input: unknown): Item
   const item = list ? lookupItem(list.index, input) : null
   if (list && item) return { status: 'found', item, itemList: list.info }
   return { status: 'unknown', itemCode: input.slice(0, MAX_ECHOED_LENGTH).replace(/[a-z]/g, (letter) => letter.toUpperCase()), itemList }
+}
+
+/**
+ * Answers the renderer's request for an item's Lots from the Stock Onhand in use (`stock`, null if
+ * none), whatever its Report Date: the renderer applies the Report Date rule with today's date.
+ */
+export function stockLotsLookupFor(stock: LoadedStockOnhand | null, input: unknown): StockLotsLookup {
+  const stockOnhand = stock?.info ?? null
+  if (stock === null || typeof input !== 'string') return { stockOnhand, lots: [] }
+  return { stockOnhand, lots: stockLotsFor(stock.index, input) }
 }

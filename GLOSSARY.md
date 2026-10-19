@@ -33,7 +33,7 @@ The HA drug master (`item_phq.txt`) imported into the app; the source of valid I
 _Avoid_: item master, drug list, DB
 
 **Stock Onhand**:
-The daily export of lots, expiries and quantities currently held; valid only for its report date.
+The daily Oracle report "HA: INV Stock onhand with lot details" of the lots, expiries and quantities currently held; valid only on its Report Date.
 _Avoid_: stock list, inventory file
 
 **Pending Label**:

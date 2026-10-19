@@ -6,6 +6,7 @@
 
 import type { ItemListEntry, ItemListImportResult, ItemListInfo } from '../core/itemList'
 import type { LabelRequest } from '../core/label'
+import type { StockLot, StockOnhandImportResult, StockOnhandInfo } from '../core/stockOnhand'
 import type { PcSettings } from '../render/printSettings'
 
 /** What the app found at startup. */
@@ -31,6 +32,10 @@ export type AppStartup =
       readonly itemList: ItemListInfo | null
       /** Why an existing Item List was not used (changed outside the app, or unreadable). */
       readonly itemListNotice: string | null
+      /** The Stock Onhand in use, shared by every PC, whatever its Report Date; null when none has been imported (or it was refused). */
+      readonly stockOnhand: StockOnhandInfo | null
+      /** Why an existing Stock Onhand was not used (changed outside the app, or unreadable). */
+      readonly stockOnhandNotice: string | null
     }
 
 /** An installed printer. */
@@ -52,6 +57,17 @@ export type PrintOutcome =
 
 /** The result of an Item List import; `cancelled` when staff closed the file dialog. */
 export type ImportItemListOutcome = ItemListImportResult | { readonly status: 'cancelled' }
+
+/** The result of a Stock Onhand import; `cancelled` when staff closed the file dialog. */
+export type ImportStockOnhandOutcome = StockOnhandImportResult | { readonly status: 'cancelled' }
+
+/** An item's Lots in the Stock Onhand in use. */
+export interface StockLotsLookup {
+  /** The Stock Onhand in use, whatever its Report Date; null when none is imported. */
+  readonly stockOnhand: StockOnhandInfo | null
+  /** The item's Lots in it, in report order; empty when it has none. */
+  readonly lots: readonly StockLot[]
+}
 
 /** What the Item List says about an Item Code. */
 export type ItemLookup =
@@ -76,6 +92,14 @@ export interface PreloadApi {
   importItemList(): Promise<ImportItemListOutcome>
   /** Looks an Item Code up in the Item List in use (picking up a newer one another PC imported). */
   lookupItem(itemCode: string): Promise<ItemLookup>
+  /**
+   * Lets staff choose today's Stock Onhand report (`.ps`, `.txt` or `.csv`) in the system file dialog
+   * and imports it (shared by every PC). A refused file leaves the Stock Onhand in use unchanged.
+   * Logged either way.
+   */
+  importStockOnhand(): Promise<ImportStockOnhandOutcome>
+  /** An item's Lots in the Stock Onhand in use (picking up a newer one another PC imported). */
+  getStockLots(itemCode: string): Promise<StockLotsLookup>
   listPrinters(): Promise<PrinterChoice[]>
   /** Lets staff pick a log folder in the system dialog; null if cancelled. */
   chooseLogFolder(): Promise<string | null>
@@ -94,6 +118,8 @@ export const IPC_CHANNELS = {
   getStartup: 'get-startup',
   importItemList: 'import-item-list',
   lookupItem: 'lookup-item',
+  importStockOnhand: 'import-stock-onhand',
+  getStockLots: 'get-stock-lots',
   listPrinters: 'list-printers',
   chooseLogFolder: 'choose-log-folder',
   testPrint: 'test-print',

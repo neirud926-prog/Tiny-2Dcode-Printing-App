@@ -3,12 +3,16 @@ import { formatExpiry, parseExpiry } from '../../core/expiry'
 import { encodeInternalGtin, PACK_VOLUMES, type PackVolumeDigit } from '../../core/internalGtin'
 import { describeItemList, formatFileDate, isLiquid, itemListProblems, type ItemListEntry, type ItemListInfo } from '../../core/itemList'
 import { buildLabel, type BuildLabelResult, type FieldMessage, type LabelField, type LabelRequest } from '../../core/label'
+import { lotPicker, type LotChoice } from '../../core/lotPicker'
 import { itemCodeFromScan, type ScanSource } from '../../core/scanInput'
+import { isStockOnhandForToday, type StockLot, type StockOnhandInfo } from '../../core/stockOnhand'
 import type { ItemLookup, PrintOutcome } from '../../preload/api'
 import type { PcSettings } from '../../render/printSettings'
 import { AppHeader } from './AppHeader'
 import { LabelPreview } from './LabelPreview'
+import { LotPicker, type LotPickerView } from './LotPicker'
 import { OutcomeMessage } from './OutcomeMessage'
+import { importedForToday, StockOnhandOutcome, StockOnhandStatus, useStockOnhandImport } from './StockOnhandImport'
 import { useToday } from './today'
 import { UnknownItemDialog } from './UnknownItemDialog'
 
@@ -34,6 +38,7 @@ const PACK_VOLUME_CHOICES: readonly { digit: PackVolumeDigit; label: string; nam
 const LOOKUP_PENDING = 'Press Enter to look up this Item Code in the Item List.'
 const LOOKUP_RUNNING = 'Looking up the Item Code…'
 const CHOOSE_PACK_VOLUME = 'Choose the Pack Volume.'
+const PICKED_HINT = 'From Stock Onhand; choose "Type lot manually" to change it.'
 
 /** What the Item List said about an Item Code, for the Item List it was asked of (`stamp`). */
 type Lookup =
@@ -50,6 +55,12 @@ const SCAN_SOURCE_HINTS: Record<ScanSource, string | null> = {
   'shelf-qr': 'From shelf label',
   'bag-label-ip': 'From in-patient dispensing-bag label'
 }
+
+/** The Item Code's Lots in the Stock Onhand they were read from (`stamp`), or why they could not be read. */
+type StockLots = { readonly code: string; readonly stamp: string } & ({ readonly lots: readonly StockLot[] } | { readonly error: string })
+
+/** Where Lot and Expiry came from: a Lot picked from the Stock Onhand (as recorded), or typed. */
+type LotSource = { readonly kind: 'picked'; readonly lot: string } | { readonly kind: 'manual' }
 
 /** Upper-cases a–z as staff type (Caps Lock need not matter); the label core does the same. */
 function upperCaseAscii(value: string): string {
@@ -69,12 +80,24 @@ interface LabelScreenProps {
   itemList: ItemListInfo
   /** A newer Item List is in use (imported from the dialog, or by another PC). */
   onItemListChanged(info: ItemListInfo): void
+  /** The Stock Onhand in use, whatever its Report Date; null if none. */
+  stockOnhand: StockOnhandInfo | null
+  /** A newer Stock Onhand is in use (imported here, or by another PC). */
+  onStockOnhandChanged(info: StockOnhandInfo): void
   onOpenSettings(): void
   hidden?: boolean
 }
 
 /** The label screen: the form on the left, the live preview and self-check on the right. */
-export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSettings, hidden = false }: LabelScreenProps): React.JSX.Element {
+export function LabelScreen({
+  settings,
+  itemList,
+  onItemListChanged,
+  stockOnhand,
+  onStockOnhandChanged,
+  onOpenSettings,
+  hidden = false
+}: LabelScreenProps): React.JSX.Element {
   const today = useToday()
   const [values, setValues] = useState<FormValues>(EMPTY_FORM)
   const [touched, setTouched] = useState<ReadonlySet<TouchField>>(new Set())
@@ -86,14 +109,35 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
   const [pendingFocus, setPendingFocus] = useState<'itemCode' | 'packVolume' | 'expiry' | null>(null)
   const [printing, setPrinting] = useState(false)
   const [outcome, setOutcome] = useState<PrintOutcome | null>(null)
+  const [stockLots, setStockLots] = useState<StockLots | null>(null)
+  const [lotSource, setLotSource] = useState<LotSource | null>(null)
+  const stockImporter = useStockOnhandImport(stockOnhand, onStockOnhandChanged)
   const inputs = useRef<Partial<Record<FormField, HTMLInputElement | null>>>({})
   const packVolumeGroup = useRef<HTMLDivElement | null>(null)
+  const lotPickerGroup = useRef<HTMLDivElement | null>(null)
 
   const stamp = itemList.importedAt
   /** The lookup for the Item Code as it is now, against the Item List in use. */
   const currentLookup = lookup && lookup.code === values.itemCode && lookup.stamp === stamp ? lookup : null
   const item = currentLookup?.status === 'found' ? currentLookup.item : null
   const liquid = item !== null && isLiquid(item)
+
+  // The Lot picker: the found item's Lots, from the Stock Onhand in use only if it is dated today.
+  const stockStamp = stockOnhand?.importedAt ?? ''
+  const currentStockLots = item && stockLots && stockLots.code === item.itemCode && stockLots.stamp === stockStamp ? stockLots : null
+  const pickerView = useMemo<LotPickerView | null>(() => {
+    if (!item) return null
+    if (!isStockOnhandForToday(stockOnhand, today)) return lotPicker(stockOnhand, item.itemCode, [], today)
+    if (!currentStockLots) return { status: 'loading' }
+    if ('error' in currentStockLots) return { status: 'error', message: currentStockLots.error }
+    return lotPicker(stockOnhand, item.itemCode, currentStockLots.lots, today)
+  }, [item, stockOnhand, currentStockLots, today])
+  /** The picked Lot while it is still offered: Lot and Expiry are then locked. */
+  const pickedChoice =
+    lotSource?.kind === 'picked' && pickerView?.status === 'choices'
+      ? (pickerView.choices.find((choice) => choice.lot === lotSource.lot && choice.fill !== null) ?? null)
+      : null
+  const locked = pickedChoice !== null
 
   const request = useMemo<LabelRequest>(
     () => ({
@@ -163,6 +207,30 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
     setLookup(next)
   }
 
+  // The found item's Lots, read again when another Stock Onhand comes into use. The answer also tells
+  // of a Stock Onhand another PC imported since.
+  const lotsItemCode = item?.itemCode ?? null
+  const stockStampRef = useRef(stockStamp)
+  stockStampRef.current = stockStamp
+  useEffect(() => {
+    if (lotsItemCode === null) return
+    let current = true
+    window.api.getStockLots(lotsItemCode).then(
+      (answer) => {
+        if (!current) return
+        const answeredStamp = answer.stockOnhand?.importedAt ?? ''
+        if (answer.stockOnhand && answeredStamp !== stockStampRef.current) onStockOnhandChanged(answer.stockOnhand)
+        setStockLots({ code: lotsItemCode, stamp: answeredStamp, lots: answer.lots })
+      },
+      (error: unknown) => {
+        if (current) setStockLots({ code: lotsItemCode, stamp: stockStampRef.current, error: String(error) })
+      }
+    )
+    return () => {
+      current = false
+    }
+  }, [lotsItemCode, stockStamp]) // onStockOnhandChanged is the parent's setter; the stamp is read through a ref.
+
   // A newer Item List came into use (from Settings or another PC): look the Item Code up again in it.
   useEffect(() => {
     const previous = lookupRef.current
@@ -176,11 +244,18 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
     if (pendingFocus === 'packVolume') {
       const group = packVolumeGroup.current
       ;(group?.querySelector<HTMLInputElement>('input:checked') ?? group?.querySelector<HTMLInputElement>('input'))?.focus()
+    } else if (pendingFocus === 'expiry') {
+      // After the Item Code (and Pack Volume): the Lot picker if it offers a Lot to pick, else the Expiry.
+      if (pickerView?.status === 'loading') return // wait for the item's Lots
+      const group = lotPickerGroup.current
+      const choice = group?.querySelector<HTMLInputElement>('input:checked') ?? group?.querySelector<HTMLInputElement>('input[data-pickable]')
+      if (choice) choice.focus()
+      else focusField('expiry')
     } else {
       focusField(pendingFocus)
     }
     setPendingFocus(null)
-  }, [pendingFocus, unknownDialogFor])
+  }, [pendingFocus, unknownDialogFor, pickerView])
 
   function touch(...fields: TouchField[]): void {
     setTouched((previous) => new Set([...previous, ...fields]))
@@ -188,13 +263,48 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
 
   function change(field: FormField, value: string): void {
     const next = field === 'itemCode' || field === 'lot' ? upperCaseAscii(value) : value
+    // A Lot picked for another item does not belong to the new one.
+    const clearPicked = field === 'itemCode' && next !== values.itemCode && lotSource?.kind === 'picked'
     if (field === 'itemCode' && next !== values.itemCode) {
       setScan(null)
       setPackVolume(null)
-      setTouched((previous) => new Set([...previous].filter((name) => name !== 'packVolume')))
+      const untouched: readonly TouchField[] = clearPicked ? ['packVolume', 'lot', 'expiry'] : ['packVolume']
+      setTouched((previous) => new Set([...previous].filter((name) => !untouched.includes(name))))
+      setLotSource(null)
     }
-    setValues((previous) => ({ ...previous, [field]: next }))
+    setValues((previous) => ({ ...previous, ...(clearPicked ? { lot: '', expiry: '' } : {}), [field]: next }))
     setOutcome(null)
+  }
+
+  /** Fills Lot and Expiry from a Lot in today's Stock Onhand, exactly as recorded, and locks them. */
+  function pickLot(choice: LotChoice): void {
+    const fill = choice.fill
+    if (!fill) return
+    setValues((previous) => ({ ...previous, lot: fill.lot, expiry: fill.expiry }))
+    setLotSource({ kind: 'picked', lot: choice.lot })
+    touch('lot', 'expiry')
+    setOutcome(null)
+  }
+
+  /** "Type lot manually": unlocks Lot and Expiry, clearing a picked Lot. */
+  function typeLotManually(): void {
+    if (lotSource?.kind === 'picked') {
+      setValues((previous) => ({ ...previous, lot: '', expiry: '' }))
+      setTouched((previous) => new Set([...previous].filter((name) => name !== 'lot' && name !== 'expiry')))
+    }
+    setLotSource({ kind: 'manual' })
+    setOutcome(null)
+  }
+
+  /** Enter on a picker choice: chooses it, then moves on to Copies (a picked Lot) or the Expiry (typing). */
+  function enterOnLotChoice(choice: LotChoice | 'manual'): void {
+    if (choice === 'manual') {
+      if (lotSource?.kind !== 'manual') typeLotManually()
+      focusField('expiry')
+    } else if (choice.fill) {
+      if (!(lotSource?.kind === 'picked' && lotSource.lot === choice.lot)) pickLot(choice)
+      focusField('copies')
+    }
   }
 
   /**
@@ -332,6 +442,7 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
         <span className="header-info" title={describeItemList(itemList)}>
           Item List <strong>{formatFileDate(itemList.sourceModified)}</strong>
         </span>
+        <StockOnhandStatus stockOnhand={stockOnhand} today={today} />
         <span className="header-info">
           Printer <strong>{settings.printerName}</strong>
         </span>
@@ -374,7 +485,7 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
                         if (event.key !== 'Enter') return
                         event.preventDefault()
                         touch('packVolume')
-                        focusField('expiry')
+                        setPendingFocus('expiry')
                       }}
                     />
                     {choice.label}
@@ -392,24 +503,43 @@ export function LabelScreen({ settings, itemList, onItemListChanged, onOpenSetti
             </fieldset>
           )}
 
+          {pickerView && (
+            <LotPicker
+              view={pickerView}
+              selected={lotSource?.kind === 'manual' ? 'manual' : (pickedChoice?.lot ?? null)}
+              onPick={pickLot}
+              onManual={typeLotManually}
+              onEnter={enterOnLotChoice}
+              onImport={() => void stockImporter.start()}
+              importing={stockImporter.busy}
+              importOutcome={
+                stockImporter.state.status !== 'idle' && !importedForToday(stockImporter.state, today) ? (
+                  <StockOnhandOutcome state={stockImporter.state} today={today} />
+                ) : null
+              }
+              groupRef={lotPickerGroup}
+            />
+          )}
+
           <Field
             label="Expiry"
             field="expiry"
             errors={visibleErrors('expiry')}
             warnings={messagesFor(result.warnings, 'expiry')}
-            hint="Month-only pack? Enter day 01"
+            hint={locked ? PICKED_HINT : 'Month-only pack? Enter day 01'}
             confirmation={visibleErrors('expiry').length === 0 ? expiryConfirmation : null}
           >
             <input
-              {...fieldProps('expiry', 'code', visibleErrors('expiry').length > 0)}
+              {...fieldProps('expiry', locked ? 'code locked' : 'code', visibleErrors('expiry').length > 0)}
+              readOnly={locked}
               onFocus={() => liquid && touch('packVolume')}
               inputMode="numeric"
               placeholder="ddmmyyyy"
             />
           </Field>
 
-          <Field label="Lot" field="lot" errors={visibleErrors('lot')} hint='A–Z, 0–9, "-", "/", "(" and ")"; up to 20'>
-            <input {...fieldProps('lot', 'code', visibleErrors('lot').length > 0)} />
+          <Field label="Lot" field="lot" errors={visibleErrors('lot')} hint={locked ? PICKED_HINT : 'A–Z, 0–9, "-", "/", "(" and ")"; up to 20'}>
+            <input {...fieldProps('lot', locked ? 'code locked' : 'code', visibleErrors('lot').length > 0)} readOnly={locked} />
           </Field>
 
           <Field label="Copies" field="copies" errors={visibleErrors('copies')} hint="1–99">

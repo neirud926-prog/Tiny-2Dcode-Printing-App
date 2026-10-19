@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react'
 import type { ItemListInfo } from '../../core/itemList'
+import { isStockOnhandForToday, type StockOnhandInfo } from '../../core/stockOnhand'
 import type { AppStartup } from '../../preload/api'
 import type { PcSettings } from '../../render/printSettings'
 import { AppHeader } from './AppHeader'
 import { ItemListPanel } from './ItemListImport'
 import { LabelScreen } from './LabelScreen'
 import { PrinterSettingsScreen } from './PrinterSettingsScreen'
+import { StockOnhandPanel, StockOnhandPrompt } from './StockOnhandImport'
+import { useToday } from './today'
 
 /**
  * Startup: the data folder must be writable. Setup then asks for what is missing, in order: the
  * Item List (shared by every PC, so imported once), then this PC's printer. Later launches open
- * straight to the label screen.
+ * straight to the label screen. Once Setup is complete, a launch with no Stock Onhand dated today
+ * asks for today's file once (Import, or Skip and type Lots by hand).
  */
 function App(): React.JSX.Element {
   const [startup, setStartup] = useState<AppStartup | null>(null)
@@ -20,6 +24,10 @@ function App(): React.JSX.Element {
   /** The Setup step "Item List" stays up, showing the import summary, until Continue. */
   const [itemListStep, setItemListStep] = useState(false)
   const [editingSettings, setEditingSettings] = useState(false)
+  const [stockOnhand, setStockOnhand] = useState<StockOnhandInfo | null>(null)
+  /** The launch prompt for today's Stock Onhand: not decided yet, showing, or done for this launch. */
+  const [stockPrompt, setStockPrompt] = useState<'pending' | 'open' | 'done'>('pending')
+  const today = useToday()
 
   useEffect(() => {
     let current = true
@@ -31,6 +39,7 @@ function App(): React.JSX.Element {
           setSettings(result.settings)
           setItemList(result.itemList)
           setItemListStep(result.itemList === null)
+          setStockOnhand(result.stockOnhand)
         }
       },
       (error: unknown) => current && setStartupError(String(error))
@@ -39,6 +48,11 @@ function App(): React.JSX.Element {
       current = false
     }
   }, [])
+
+  const setupComplete = startup?.status === 'ready' && itemList !== null && !itemListStep && settings !== null
+  useEffect(() => {
+    if (setupComplete && stockPrompt === 'pending') setStockPrompt(isStockOnhandForToday(stockOnhand, today) ? 'done' : 'open')
+  }, [setupComplete, stockPrompt, stockOnhand, today])
 
   if (startupError) {
     return <FullScreenMessage title="The app could not start." detail={startupError} />
@@ -93,9 +107,20 @@ function App(): React.JSX.Element {
         settings={settings}
         itemList={itemList}
         onItemListChanged={setItemList}
+        stockOnhand={stockOnhand}
+        onStockOnhandChanged={setStockOnhand}
         onOpenSettings={() => setEditingSettings(true)}
         hidden={editingSettings}
       />
+      {stockPrompt === 'open' && (
+        <StockOnhandPrompt
+          stockOnhand={stockOnhand}
+          today={today}
+          notice={startup.stockOnhandNotice}
+          onImported={setStockOnhand}
+          onClose={() => setStockPrompt('done')}
+        />
+      )}
       {editingSettings && (
         <PrinterSettingsScreen
           mode="settings"
@@ -109,6 +134,7 @@ function App(): React.JSX.Element {
           onCancel={() => setEditingSettings(false)}
         >
           <ItemListPanel mode="settings" itemList={itemList} onImported={setItemList} />
+          <StockOnhandPanel stockOnhand={stockOnhand} today={today} onImported={setStockOnhand} />
         </PrinterSettingsScreen>
       )}
     </>
