@@ -1,0 +1,31 @@
+# electron-builder: one portable Windows x64 .exe (no installer, no admin rights).
+# Build it with `npm run dist:win`; CI builds it on Windows (.github/workflows/ci.yml).
+appId: io.github.neirud926prog.tiny2dcode
+productName: Tiny 2D-code Printing App
+copyright: Copyright © 2026 Wong Fuk Wing
+
+directories:
+  output: release
+
+# electron-vite bundles everything into out/; the app has no runtime node_modules.
+files:
+  - out/**
+  - package.json
+asar: true
+npmRebuild: false
+# The UI is English only; dropping Chromium's other locales makes the .exe smaller and quicker to unpack.
+electronLanguages:
+  - en-US
+
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+
+portable:
+  artifactName: Tiny2DCode-${version}-portable.exe
+
+# No auto-update and no publishing from electron-builder: CI attaches the .exe to the GitHub Release.
+# No code signing either (no certificate is configured), so Windows SmartScreen may warn on first run.
+publish: null

@@ -4,6 +4,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }): React.J
     <header className="app-header">
       <h1>Tiny 2D-code Printing App</h1>
       <span className="app-header__note">GS1 DataMatrix labels · Internal GTIN, Expiry, Lot</span>
+      <span className="app-header__note">v{__APP_VERSION__}</span>
       {children && <div className="app-header__end">{children}</div>}
     </header>
   )

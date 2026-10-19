@@ -20,6 +20,20 @@ describe('resolveDataFolder', () => {
     ).toBe('S:\\Pharmacy\\Label App\\LabelData')
   })
 
+  it('never uses the temp folder the portable .exe unpacks itself to', () => {
+    // The portable launcher unpacks the app to %TEMP% at each launch and sets PORTABLE_EXECUTABLE_DIR
+    // to the folder holding the .exe staff double-clicked (with or without a trailing backslash).
+    const unpacked = 'C:\\Users\\nurse\\AppData\\Local\\Temp\\2xYz9'
+    for (const portableExecutableDir of ['S:\\Pharmacy\\Label App', 'S:\\Pharmacy\\Label App\\']) {
+      const folder = resolveDataFolder(
+        { portableExecutableDir, isPackaged: true, exePath: `${unpacked}\\Tiny 2D-code Printing App.exe`, appPath: `${unpacked}\\resources\\app.asar` },
+        win32
+      )
+      expect(folder).toBe('S:\\Pharmacy\\Label App\\LabelData')
+      expect(folder.startsWith(unpacked)).toBe(false)
+    }
+  })
+
   it('works from a UNC share', () => {
     expect(
       resolveDataFolder({ portableExecutableDir: '\\\\nlth-fs01\\pharmacy\\label-app', isPackaged: true, exePath: 'C:\\x\\app.exe', appPath: 'C:\\x' }, win32)

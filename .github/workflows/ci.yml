@@ -1,8 +1,18 @@
 name: CI
 
+# Every push and pull request: tests, then the portable Windows .exe as a workflow artifact (14 days).
+# A pushed `v*` tag matching package.json "version" (e.g. v0.1.0) also publishes a GitHub Release with
+# that .exe. To test the release job without publishing, run the workflow by hand with
+# "Release dry run": it creates a draft release (never public), checks the .exe is attached, then deletes it.
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      release-dry-run:
+        description: Release dry run (draft release, deleted again)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,3 +30,83 @@ jobs:
       - run: npm test
       - name: Typecheck and build
         run: npm run build
+
+  windows:
+    name: Windows portable .exe
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.name.outputs.version }}
+      exe: ${{ steps.name.outputs.exe }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Name the .exe
+        id: name
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Must match portable.artifactName in electron-builder.yml.
+          echo "exe=Tiny2DCode-$version-portable.exe" >> "$GITHUB_OUTPUT"
+      - name: Build the portable .exe
+        run: npm run dist:win
+      - name: Check one portable .exe was built
+        shell: bash
+        env:
+          EXE: ${{ steps.name.outputs.exe }}
+        run: |
+          ls -l release/*.exe
+          test "$(ls release/*.exe | wc -l)" -eq 1
+          test -f "release/$EXE"
+      # Uploaded as the bare .exe, not zipped; the artifact takes the file's name.
+      - uses: actions/upload-artifact@v7
+        with:
+          path: release/${{ steps.name.outputs.exe }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: GitHub Release
+    needs: windows
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.release-dry-run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.windows.outputs.version }}
+      EXE: ${{ needs.windows.outputs.exe }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.windows.outputs.exe }}
+      - name: Check the .exe was downloaded
+        run: ls -l "$EXE"
+      - name: Publish the release
+        if: github.event_name == 'push'
+        run: |
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $VERSION. Push tag v$VERSION, or change the version first."
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" "$EXE" --verify-tag --generate-notes --title "Tiny 2D-code Printing App $GITHUB_REF_NAME"
+      - name: Dry run (draft release, deleted again)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          tag="v$VERSION-dry-run.$GITHUB_RUN_ID"
+          trap 'gh release delete "$tag" --yes || true' EXIT
+          gh release create "$tag" "$EXE" --draft --target "$GITHUB_SHA" --generate-notes --title "Dry run $tag"
+          gh release view "$tag" --json isDraft,assets --jq '{isDraft, assets: [.assets[] | {name, size}]}'
+          test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true
+          test "$(gh release view "$tag" --json assets --jq '.assets[].name')" = "$EXE"

@@ -11,7 +11,29 @@ npm install     # install dependencies
 npm test        # run the tests (vitest)
 npm run dev     # start the app with hot reload (downloads the Electron binary on first run)
 npm run build   # typecheck and build to out/
+npm run dist:win      # build the portable Windows x64 .exe into release/ (CI does this on Windows; NSIS does not run on Apple silicon without Rosetta)
+npm run dist:win:dir  # build the unpacked Windows folder release/win-unpacked/ (works on any OS)
 ```
+
+CI (`.github/workflows/ci.yml`) runs the tests on every push and pull request, then builds the portable `.exe` on Windows and keeps it as a workflow artifact for 14 days.
+
+### Releasing
+
+1. Set `"version"` in `package.json` (e.g. `0.2.0`) and push to `main`.
+2. Push the matching tag: `git tag v0.2.0 && git push origin v0.2.0`. CI builds the `.exe` and publishes a GitHub Release with it attached and generated notes. A tag that does not match `package.json` fails the release.
+
+To test the release job without publishing anything, run the CI workflow by hand (Actions → CI → Run workflow) with **Release dry run** ticked: it creates a draft release, checks the `.exe` is attached, and deletes it.
+
+## Deploying on the shared drive
+
+1. Download `Tiny2DCode-<version>-portable.exe` from [Releases](https://github.com/neirud926-prog/Tiny-2Dcode-Printing-App/releases). It is the whole app: no installer, no admin rights.
+2. Copy it to a folder on the pharmacy shared drive that every staff member using the app can write to, e.g. `S:\Pharmacy\Label App\`. Every PC runs that same file. To upgrade, close the app on every PC, replace the `.exe` with the new one and keep `LabelData\`. The header shows the running version, e.g. `v0.1.0`.
+3. First launch: Setup asks for the Item List import (shared by every PC), then for this PC's printer and label size with a test print. Every other PC asks only for its own printer and test print. Later launches open straight to the label screen.
+
+- **`LabelData\` is created next to the `.exe`** (see [Data folder](#data-folder)). It holds the shared data and each PC's settings as sealed `.dat` files: do not edit, rename or move them, since a file changed outside the app is refused. Print and import logs are CSV files in `LabelData\logs\` unless the log folder was changed under **Settings**. If the app cannot write there, it says so at startup: move the `.exe` to a folder you can write to.
+- **Startup takes a few seconds.** The portable `.exe` unpacks the app into the PC's temp folder (`%TEMP%`) at every launch, runs it from there and deletes it on exit; from a network share this can take several seconds before the window appears, so double-click once and wait. The data still goes next to the `.exe`, never into the temp folder: the launcher passes the `.exe`'s folder to the app (`PORTABLE_EXECUTABLE_DIR`). If startup is too slow, use the unpacked folder build instead: run `npm ci` and `npm run dist:win:dir` in this repo, copy the whole `release/win-unpacked/` folder to the shared drive and start `Tiny 2D-code Printing App.exe` inside it. It starts without unpacking and keeps `LabelData\` inside that folder, next to its `.exe` (move an existing `LabelData\` there).
+- **Windows SmartScreen may warn.** The `.exe` is not code-signed, so Windows may show "Windows protected your PC" on first run or when it is downloaded: choose **More info → Run anyway**, or unblock it under the file's **Properties**, or ask IT to allow it.
+- **Offline.** The app makes no network calls: no auto-update, no telemetry, no remote content. Updates are manual, from Releases.
 
 ## Data folder
 
