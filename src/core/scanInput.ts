@@ -4,8 +4,9 @@
  * Recognised, after a–z is upper-cased (ASCII only):
  *   - a plain Item Code: exactly 6 of the 40 Item Code characters (typed, or an out-patient
  *     dispensing-bag label, which carries just the Item Code), e.g. `AIR 01`;
- *   - a shelf QR: the Item Code, `_`, a BIN of 2–6 letters or digits, then either nothing (PMH's plain
- *     `ITEMCODE_BIN`, 9–13 characters) or `_` and a non-empty hash, e.g. `PARA01_1C5A_BPh!oUCUb0SGI/13ZaR`;
+ *   - a shelf label, in the shapes BCS reads: NLTH's QR `ITEMCODE_BIN_B<hash>aR` with a 4-character BIN,
+ *     e.g. `PARA01_1C5A_BPh!oUCUb0SGI/13ZaR`, or another site's plain `ITEMCODE_BIN` with a BIN of 2–6
+ *     characters other than `_` (9–13 characters in all; PMH has bins like `AA 9`);
  *   - an in-patient dispensing-bag label: exactly 13 characters, 4 letters or digits, the Item Code,
  *     3 letters or digits, e.g. `2607PIOG02A1B`. Thirteen digits is a manufacturer EAN-13 instead (no
  *     Item Code is all digits), so it is refused.
@@ -34,8 +35,14 @@ const ITEM_CODE_CHARACTER = `[${ITEM_CODE_CHARACTERS.replace(/[-\\\]^]/g, '\\$&'
 const ITEM_CODE = `(${ITEM_CODE_CHARACTER}{${ITEM_CODE_LENGTH}})`
 
 const PLAIN_ITEM_CODE = new RegExp(`^${ITEM_CODE}$`)
-/** `ITEMCODE_BIN` or `ITEMCODE_BIN_<hash>`; the hash may hold any character, underscores included. */
-const SHELF_QR = new RegExp(`^${ITEM_CODE}_[0-9A-Z]{2,6}(?:_.+)?$`, 's')
+/**
+ * The shelf-label shapes BCS reads (its `classifyScanInput`), so a label BCS accepts is accepted here:
+ * NLTH's QR `ITEMCODE_BIN_B<hash>aR` with exactly 4 BIN characters of any kind (`_B` at position 12),
+ * and another site's plain `ITEMCODE_BIN` with 2–6 BIN characters other than `_` (PMH has `AA 9`).
+ * Case-insensitive because the value is upper-cased before matching, which turns the `aR` tail into `AR`.
+ */
+const SHELF_QR_PREFIXED = new RegExp(`^${ITEM_CODE}_.{4}_B.+AR$`, 'is')
+const SHELF_LABEL_PLAIN = new RegExp(`^${ITEM_CODE}_[^_]{2,6}$`, 'i')
 /** 4 + Item Code + 3 = 13 characters. */
 const IN_PATIENT_BAG_LABEL = new RegExp(`^[0-9A-Z]{4}${ITEM_CODE}[0-9A-Z]{3}$`)
 const EAN_13 = /^[0-9]{13}$/
@@ -54,8 +61,8 @@ export function itemCodeFromScan(raw: string): ItemCodeFromScanResult {
 function match(value: string): ItemCodeFromScanResult | null {
   const plain = PLAIN_ITEM_CODE.exec(value)
   if (plain) return { ok: true, itemCode: plain[1], source: 'typed' }
-  const shelf = SHELF_QR.exec(value)
-  if (shelf) return { ok: true, itemCode: shelf[1], source: 'shelf-qr' }
+  const shelf = SHELF_QR_PREFIXED.exec(value) ?? SHELF_LABEL_PLAIN.exec(value)
+  if (shelf) return { ok: true, itemCode: upperCaseAscii(shelf[1]), source: 'shelf-qr' }
   const bag = IN_PATIENT_BAG_LABEL.exec(value)
   if (bag && !EAN_13.test(value)) return { ok: true, itemCode: bag[1], source: 'bag-label-ip' }
   return null

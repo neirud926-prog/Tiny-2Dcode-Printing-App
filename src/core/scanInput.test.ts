@@ -39,7 +39,7 @@ describe('itemCodeFromScan', () => {
     })
 
     it('keeps a space inside the Item Code', () => {
-      expect(itemCodeFromScan('AIR 01_2B_x/Y!z')).toEqual({ ok: true, itemCode: 'AIR 01', source: 'shelf-qr' })
+      expect(itemCodeFromScan('AIR 01_2B3C_BPh!oUCUb0SGI/13ZaR')).toEqual({ ok: true, itemCode: 'AIR 01', source: 'shelf-qr' })
       expect(itemCodeFromScan('K Y 02_3D')).toEqual({ ok: true, itemCode: 'K Y 02', source: 'shelf-qr' })
     })
 
@@ -47,21 +47,27 @@ describe('itemCodeFromScan', () => {
       expect(itemCodeFromScan('para01_1c5a_bph!oucub0sgi/13zar')).toEqual({ ok: true, itemCode: 'PARA01', source: 'shelf-qr' })
     })
 
-    it('accepts a hash that itself contains underscores', () => {
-      expect(itemCodeFromScan('PARA01_1C5A_ab_cd_ef')).toEqual({ ok: true, itemCode: 'PARA01', source: 'shelf-qr' })
+    it('accepts any 4 characters as the BIN of the prefixed form, as BCS does', () => {
+      expect(itemCodeFromScan('PARA01_A 9-_BPh!oUCUb0SGI/13ZaR')).toEqual({ ok: true, itemCode: 'PARA01', source: 'shelf-qr' })
     })
 
-    it('accepts a plain ITEMCODE_BIN of 9 to 13 characters (a BIN of 2–6 letters or digits)', () => {
+    it('accepts a plain ITEMCODE_BIN of 9 to 13 characters, any BIN characters but an underscore', () => {
       expect(itemCodeFromScan('PARA01_1C')).toMatchObject({ ok: true, itemCode: 'PARA01' })
       expect(itemCodeFromScan('PARA01_1C5A12')).toMatchObject({ ok: true, itemCode: 'PARA01', source: 'shelf-qr' })
+      // Real bins: PMH's `AA 9` has a space; NLTH mobile shelves look like `M11-R1`.
+      expect(itemCodeFromScan('PARA01_AA 9')).toMatchObject({ ok: true, itemCode: 'PARA01', source: 'shelf-qr' })
+      expect(itemCodeFromScan('PARA01_M11-R1')).toMatchObject({ ok: true, itemCode: 'PARA01', source: 'shelf-qr' })
+      expect(itemCodeFromScan('PARA01_1C/5')).toMatchObject({ ok: true, itemCode: 'PARA01', source: 'shelf-qr' })
     })
 
     it.each([
       ['a 1-character BIN', 'PARA01_1'],
       ['a 7-character BIN', 'PARA01_1C5A123'],
       ['an empty BIN', 'PARA01__hash'],
-      ['a BIN with a character other than a letter or digit', 'PARA01_1C/5'],
       ['an empty hash', 'PARA01_1C5A_'],
+      ['a hash not in the `B…aR` shape', 'PARA01_1C5A_ab_cd_ef'],
+      ['a 3-character BIN before the hash', 'PARA01_1C5_BPh!oUCUb0SGI/13ZaR'],
+      ['a 5-character BIN before the hash', 'PARA01_1C5AB_BPh!oUCUb0SGI/13ZaR'],
       ['nothing after the underscore', 'PARA01_']
     ])('refuses %s', (_, raw) => {
       expect(itemCodeFromScan(raw)).toEqual(NOT_RECOGNISED)
