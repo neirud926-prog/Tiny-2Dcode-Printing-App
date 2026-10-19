@@ -1,4 +1,5 @@
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron'
+import { localIsoDate } from '../core/expiry'
 import { errorText } from '../data/atomicWrite'
 import { checkDataFolder, checkFolderWritable } from '../data/dataFolder'
 import { createItemListSource } from '../data/itemListStore'
@@ -11,6 +12,7 @@ import {
   type ImportItemListOutcome,
   type ImportStockOnhandOutcome,
   type ItemLookup,
+  type DeleteExpiredOutcome,
   type DeletePendingOutcome,
   type PendingLabelsList,
   type PreloadApi,
@@ -22,7 +24,7 @@ import {
 } from '../preload/api'
 import { normalisePcSettings, type PcSettings } from '../render/printSettings'
 import { itemLookupFor, stockLotsLookupFor } from './itemLookup'
-import { deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
+import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
 import { printerProblem, printLabelRequest, printTestLabel, type PrintContext, type PrintServiceDeps } from './printService'
 import { sendToPrinter } from './printWindow'
 
@@ -74,7 +76,11 @@ export function registerIpc(context: IpcContext): void {
         return printPendingLabel(id, packVolumeDigit, folderReady ? settings : null, itemList?.index ?? null, context, deps)
       }),
     deletePendingLabel: (_event, id) =>
-      folderReady ? deletePendingLabel(dataFolder, id) : Promise.resolve<DeletePendingOutcome>({ ok: false, message: 'The data folder is not ready.' })
+      folderReady ? deletePendingLabel(dataFolder, id) : Promise.resolve<DeletePendingOutcome>({ ok: false, message: 'The data folder is not ready.' }),
+    deleteExpiredPendingLabels: () =>
+      folderReady
+        ? deleteExpiredPendingLabels(dataFolder, localIsoDate(deps.now()))
+        : Promise.resolve<DeleteExpiredOutcome>({ ok: false, message: 'The data folder is not ready.' })
   }
 
   for (const method of Object.keys(handlers) as (keyof PreloadApi)[]) {
@@ -114,7 +120,7 @@ export function registerIpc(context: IpcContext): void {
 
   async function listPendingLabelsNow(): Promise<PendingLabelsList> {
     if (!folderReady) return { ok: false, message: 'The data folder is not ready.' }
-    return listPendingLabels(dataFolder, (await itemLists.current())?.index ?? null)
+    return listPendingLabels(dataFolder, (await itemLists.current())?.index ?? null, localIsoDate(deps.now()))
   }
 
   async function importItemList(event: IpcMainInvokeEvent): Promise<ImportItemListOutcome> {

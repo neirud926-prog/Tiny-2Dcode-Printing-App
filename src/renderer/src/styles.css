@@ -857,6 +857,11 @@ p {
   font-weight: 600;
 }
 
+.pending__status--expired {
+  color: var(--error);
+  font-weight: 600;
+}
+
 .pending__detail {
   grid-column: 1;
   color: var(--muted);

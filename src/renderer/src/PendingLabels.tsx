@@ -78,7 +78,16 @@ export function PendingLabelsDialog({ list, refresh, onClose }: PendingLabelsDia
       return deleted.ok ? { ok: true, message: `Deleted the Pending Label for ${label.itemCode}.`, warning: null } : deleted
     })
 
+  const removeExpired = (): Promise<void> =>
+    run('expired', async () => {
+      const deleted = await window.api.deleteExpiredPendingLabels()
+      if (!deleted.ok) return deleted
+      const message = deleted.deleted === 0 ? 'There were no expired Pending Labels.' : `Deleted ${deleted.deleted} expired Pending ${deleted.deleted === 1 ? 'Label' : 'Labels'}.`
+      return { ok: true, message, warning: null }
+    })
+
   const labels = list?.ok ? list.labels : []
+  const expiredCount = labels.filter((label) => label.status === 'expired').length
   return (
     <dialog
       ref={dialog}
@@ -105,8 +114,8 @@ export function PendingLabelsDialog({ list, refresh, onClose }: PendingLabelsDia
               <li key={label.id} className={label.status === 'ready' ? 'pending__row pending__row--ready' : 'pending__row'}>
                 <div className="pending__main">
                   <code>{label.itemCode}</code>
-                  <span className={label.status === 'ready' ? 'pending__status pending__status--ready' : 'pending__status'}>
-                    {label.status === 'ready' ? `Ready · ${label.itemName}` : 'Waiting for the Item List'}
+                  <span className={`pending__status pending__status--${label.status}`}>
+                    {label.status === 'ready' ? `Ready · ${label.itemName}` : label.status === 'expired' ? 'Expired' : 'Waiting for the Item List'}
                   </span>
                 </div>
                 <div className="pending__detail">
@@ -132,14 +141,16 @@ export function PendingLabelsDialog({ list, refresh, onClose }: PendingLabelsDia
                       ))}
                     </select>
                   )}
-                  <button
-                    type="button"
-                    className="button button--primary button--small"
-                    disabled={label.status !== 'ready' || busy !== null || (needsVolume && chosen === undefined)}
-                    onClick={() => void print(label)}
-                  >
-                    {busy === label.id ? 'Working…' : 'Print'}
-                  </button>
+                  {label.status !== 'expired' && (
+                    <button
+                      type="button"
+                      className="button button--primary button--small"
+                      disabled={label.status !== 'ready' || busy !== null || (needsVolume && chosen === undefined)}
+                      onClick={() => void print(label)}
+                    >
+                      {busy === label.id ? 'Working…' : 'Print'}
+                    </button>
+                  )}
                   <button type="button" className="button button--secondary button--small" disabled={busy !== null} onClick={() => void remove(label)}>
                     Delete
                   </button>
@@ -151,6 +162,11 @@ export function PendingLabelsDialog({ list, refresh, onClose }: PendingLabelsDia
       )}
       <OutcomeMessage outcome={outcome} />
       <div className="dialog__footer">
+        {expiredCount > 0 && (
+          <button type="button" className="button button--secondary" disabled={busy !== null} onClick={() => void removeExpired()}>
+            {busy === 'expired' ? 'Working…' : `Delete expired (${expiredCount})`}
+          </button>
+        )}
         <button type="button" className="button button--secondary" onClick={onClose} disabled={busy !== null} autoFocus>
           Close
         </button>
