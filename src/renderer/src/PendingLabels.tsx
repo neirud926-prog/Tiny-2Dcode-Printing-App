@@ -1,15 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatExpiry, parseExpiry } from '../../core/expiry'
-import { PACK_VOLUMES } from '../../core/internalGtin'
 import type { PendingLabelView } from '../../core/pendingLabel'
 import type { PendingLabelsList, PrintOutcome } from '../../preload/api'
 import { OutcomeMessage } from './OutcomeMessage'
-
-/** Pack Volume choices for a liquid saved without one: the listed volumes, then Other (digit 0). */
-export const PACK_VOLUME_OPTIONS: readonly { digit: number; name: string }[] = [
-  ...PACK_VOLUMES.filter((entry) => entry.ml !== null).map((entry) => ({ digit: entry.digit, name: `${entry.ml} mL` })),
-  { digit: 0, name: 'Other' }
-]
+import { PACK_VOLUME_CHOICES } from './packVolumeChoices'
 
 /**
  * The Pending Labels, read again whenever the Item List in use changes (`itemListStamp`): that is
@@ -117,7 +111,7 @@ export function PendingLabelsDialog({ list, refresh, onClose }: PendingLabelsDia
                 </div>
                 <div className="pending__detail">
                   Expiry {expiry.ok ? formatExpiry(expiry.expiry) : label.expiry} · Lot {label.lot} · {label.copies} {label.copies === 1 ? 'copy' : 'copies'}
-                  {label.packVolumeDigit ? ` · ${PACK_VOLUME_OPTIONS.find((option) => option.digit === label.packVolumeDigit)?.name}` : ''}
+                  {label.packVolumeDigit ? ` · ${PACK_VOLUME_CHOICES.find((choice) => choice.digit === label.packVolumeDigit)?.name}` : ''}
                   <br />
                   Saved {label.savedAt.slice(0, 10)} by {label.savedBy} on {label.pc}
                 </div>
@@ -131,9 +125,9 @@ export function PendingLabelsDialog({ list, refresh, onClose }: PendingLabelsDia
                       <option value="" disabled>
                         Pack Volume…
                       </option>
-                      {PACK_VOLUME_OPTIONS.map((option) => (
-                        <option key={option.digit} value={option.digit}>
-                          {option.name}
+                      {PACK_VOLUME_CHOICES.map((choice) => (
+                        <option key={choice.digit} value={choice.digit}>
+                          {choice.name}
                         </option>
                       ))}
                     </select>

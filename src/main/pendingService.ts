@@ -8,7 +8,7 @@ import { localIsoDate } from '../core/expiry'
 import { isLiquid, lookupItem, type ItemIndex } from '../core/itemList'
 import { buildLabel } from '../core/label'
 import { pendingLabelRequest, viewPendingLabels, type PendingLabelInput } from '../core/pendingLabel'
-import { addPending, readPending, removePending, restorePending } from '../data/pendingStore'
+import { addPending, defaultPendingDeps, readPending, removePending, restorePending } from '../data/pendingStore'
 import type { DeletePendingOutcome, PendingLabelsList, PrintOutcome, SavePendingOutcome } from '../preload/api'
 import type { PcSettings } from '../render/printSettings'
 import { printLabelRequest, type PrintContext, type PrintServiceDeps } from './printService'
@@ -38,7 +38,7 @@ export async function savePendingLabel(input: unknown, context: PrintContext, de
       savedBy: context.windowsUser,
       pc: context.pcName
     },
-    { now: () => at, sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }
+    { ...defaultPendingDeps, now: () => at }
   )
   if (!saved.ok) return { ok: false, message: `Not saved: ${saved.message}` }
   return { ok: true, message: `Saved ${label.itemCode} as a Pending Label. It prints once an Item List with this Item Code is imported.` }

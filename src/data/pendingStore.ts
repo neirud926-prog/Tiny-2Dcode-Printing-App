@@ -34,7 +34,7 @@ export interface PendingStoreDeps {
   sleep(ms: number): Promise<void>
 }
 
-const defaultDeps: PendingStoreDeps = { now: () => new Date(), sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }
+export const defaultPendingDeps: PendingStoreDeps = { now: () => new Date(), sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }
 
 export type PendingReadResult = { ok: true; labels: PendingLabel[] } | { ok: false; message: string }
 
@@ -64,7 +64,7 @@ export type PendingChange<T> = { ok: true; value: T } | { ok: false; message: st
 export async function changePending<T>(
   dataFolder: string,
   change: (labels: readonly PendingLabel[]) => { ok: true; labels: readonly PendingLabel[]; value: T } | { ok: false; message: string },
-  deps: PendingStoreDeps = defaultDeps
+  deps: PendingStoreDeps = defaultPendingDeps
 ): Promise<PendingChange<T>> {
   const lock = await takeLock(dataFolder, deps)
   if (!lock.ok) return lock
@@ -88,7 +88,7 @@ export async function changePending<T>(
 export function addPending(
   dataFolder: string,
   label: Omit<PendingLabel, 'id' | 'savedAt'>,
-  deps: PendingStoreDeps = defaultDeps
+  deps: PendingStoreDeps = defaultPendingDeps
 ): Promise<PendingChange<PendingLabel>> {
   return changePending(
     dataFolder,
@@ -104,7 +104,7 @@ export function addPending(
 }
 
 /** Removes a Pending Label and returns it, so whoever removed it alone may print it. */
-export function removePending(dataFolder: string, id: string, deps: PendingStoreDeps = defaultDeps): Promise<PendingChange<PendingLabel>> {
+export function removePending(dataFolder: string, id: string, deps: PendingStoreDeps = defaultPendingDeps): Promise<PendingChange<PendingLabel>> {
   return changePending(
     dataFolder,
     (labels) => {
@@ -117,7 +117,7 @@ export function removePending(dataFolder: string, id: string, deps: PendingStore
 }
 
 /** Puts a removed Pending Label back (a print that failed), unless it is already there. */
-export function restorePending(dataFolder: string, label: PendingLabel, deps: PendingStoreDeps = defaultDeps): Promise<PendingChange<null>> {
+export function restorePending(dataFolder: string, label: PendingLabel, deps: PendingStoreDeps = defaultPendingDeps): Promise<PendingChange<null>> {
   return changePending(
     dataFolder,
     (labels) => (labels.some((existing) => existing.id === label.id) ? { ok: true, labels, value: null } : { ok: true, labels: [...labels, label], value: null }),

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatFileDate, type ItemListInfo } from '../../core/itemList'
 import { ImportOutcome, useItemListImport } from './ItemListImport'
-import { PACK_VOLUME_OPTIONS } from './PendingLabels'
+import { PACK_VOLUME_CHOICES } from './packVolumeChoices'
 
 interface UnknownItemDialogProps {
   itemCode: string
@@ -109,9 +109,9 @@ export function UnknownItemDialog({ itemCode, itemList, onImported, recheck, sav
           disabled={busy}
         >
           <option value="">Not a liquid / not sure</option>
-          {PACK_VOLUME_OPTIONS.map((option) => (
-            <option key={option.digit} value={option.digit}>
-              {option.name}
+          {PACK_VOLUME_CHOICES.map((choice) => (
+            <option key={choice.digit} value={choice.digit}>
+              {choice.name}
             </option>
           ))}
         </select>
