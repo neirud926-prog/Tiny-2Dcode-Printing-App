@@ -2,6 +2,7 @@
  * The import log: one CSV file per PC per month, `import-log-YYYY-MM-<PC>.csv`, append-only, one line
  * per import of the Item List or Stock Onhand, whether it was imported or refused.
  */
+import { errorText } from './atomicWrite'
 import { appendLogLine, csvLine, localDateTime, monthlyLogFileName } from './csvLog'
 
 export const IMPORT_LOG_HEADER: readonly string[] = ['Date Time', 'Windows User', 'PC', 'Kind', 'File', 'Rows imported', 'Bad rows', 'Result']
@@ -45,4 +46,17 @@ export function importLogLine(entry: ImportLogEntry): string {
 /** Appends one line for `entry` to its month file in `logFolder`; returns the file's path. */
 export function appendImportLog(logFolder: string, entry: ImportLogEntry): Promise<string> {
   return appendLogLine(logFolder, importLogFileName(entry.pcName, entry.at), IMPORT_LOG_HEADER, importLogLine(entry))
+}
+
+/**
+ * Appends one line for `entry`, as `appendImportLog`. A log that cannot be written does not stop an
+ * import: returns null, or the warning to show.
+ */
+export async function importLogWarning(logFolder: string, entry: ImportLogEntry): Promise<string | null> {
+  try {
+    await appendImportLog(logFolder, entry)
+    return null
+  } catch (error) {
+    return `The import log could not be written: ${errorText(error)}`
+  }
 }

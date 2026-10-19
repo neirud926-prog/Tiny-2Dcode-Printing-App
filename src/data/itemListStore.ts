@@ -18,8 +18,9 @@ import {
   type ItemListSummary
 } from '../core/itemList'
 import { errorText } from './atomicWrite'
-import { appendImportLog, type ImportLogEntry } from './importLog'
+import { importLogWarning, type ImportLogEntry } from './importLog'
 import { readSealed, writeSealed } from './sealed'
+import { createSharedFile } from './sharedFile'
 
 export const ITEM_LIST_FILE_NAME = 'items.dat'
 
@@ -98,12 +99,8 @@ export async function importItemListFile(
 
   /** Writes the import log line; a log that cannot be written becomes the result's warning. */
   async function logged(result: ItemListImportResult, line: Pick<ImportLogEntry, 'rowsImported' | 'badRows' | 'result'>): Promise<ItemListImportResult> {
-    try {
-      await appendImportLog(context.logFolder, { at, windowsUser: context.windowsUser, pcName: context.pcName, kind: 'Item List', file: sourcePath, ...line })
-      return result
-    } catch (error) {
-      return { ...result, warning: `The import log could not be written: ${errorText(error)}` }
-    }
+    const warning = await importLogWarning(context.logFolder, { at, windowsUser: context.windowsUser, pcName: context.pcName, kind: 'Item List', file: sourcePath, ...line })
+    return warning ? { ...result, warning } : result
   }
 
   /** Nothing imported: `Refused` when the file is not accepted, `Failed` when it could not be read or saved. */
@@ -173,42 +170,17 @@ export interface ItemListSource {
  * was verified when it was read.
  */
 export function createItemListSource(dataFolder: string): ItemListSource {
-  let inUse: LoadedItemList | null = null
-  /** Size and modified time of the `items.dat` that `inUse` came from (or was last checked). */
-  let seen: string | null = null
-
-  async function stampOf(): Promise<string | null> {
-    try {
-      const stats = await stat(itemListPath(dataFolder))
-      return `${stats.size}:${stats.mtimeMs}`
-    } catch {
-      return null
-    }
-  }
-
-  /** Reads `items.dat`; an Item List that cannot be used replaces the one in use only if `strict`. */
-  async function read(strict: boolean): Promise<LoadItemListResult> {
-    const stamp = await stampOf()
-    const loaded = await loadItemList(dataFolder)
-    seen = stamp
-    if (loaded.status === 'ok') inUse = loaded.list
-    else if (strict) inUse = null
-    return loaded
-  }
-
+  const file = createSharedFile(
+    itemListPath(dataFolder),
+    () => loadItemList(dataFolder),
+    (loaded) => (loaded.status === 'ok' ? loaded.list : null)
+  )
   return {
-    load: () => read(true),
-    async current() {
-      const stamp = await stampOf()
-      if (stamp !== null && stamp !== seen) await read(false)
-      return inUse
-    },
+    load: file.load,
+    current: file.current,
     async importFile(sourcePath, context) {
       const { result, list } = await importItemListFile(sourcePath, { ...context, dataFolder })
-      if (list) {
-        inUse = list
-        seen = await stampOf()
-      }
+      if (list) await file.replaced(list)
       return result
     }
   }
