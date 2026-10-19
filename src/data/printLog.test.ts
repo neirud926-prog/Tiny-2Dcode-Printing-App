@@ -2,7 +2,8 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildLabel, type LabelRequest } from '../core/label'
-import { appendPrintLog, csvField, PRINT_LOG_HEADER, printLogEntryFor, printLogFileName, printLogLine, type PrintLogEntry } from './printLog'
+import { linesOf, parseCsvLine } from './csvTesting'
+import { appendPrintLog, PRINT_LOG_HEADER, printLogEntryFor, printLogFileName, printLogLine, type PrintLogEntry } from './printLog'
 import { tempFolder } from './testFolder'
 
 const today = '2026-10-19'
@@ -17,34 +18,6 @@ function labelFor(overrides: Partial<LabelRequest> = {}) {
 const at = new Date(2026, 9, 19, 14, 3, 7)
 
 const entry: PrintLogEntry = printLogEntryFor(labelFor(), { at, windowsUser: 'chantm', pcName: 'PHARM-01' })
-
-/** Splits a CSV line written by the log (fields quoted only when needed). */
-function parseCsvLine(line: string): string[] {
-  const fields: string[] = []
-  let field = ''
-  let quoted = false
-  for (let i = 0; i < line.length; i++) {
-    const character = line[i]
-    if (quoted) {
-      if (character === '"' && line[i + 1] === '"') {
-        field += '"'
-        i++
-      } else if (character === '"') quoted = false
-      else field += character
-    } else if (character === '"') quoted = true
-    else if (character === ',') {
-      fields.push(field)
-      field = ''
-    } else field += character
-  }
-  fields.push(field)
-  return fields
-}
-
-function linesOf(content: string): string[] {
-  expect(content.endsWith('\r\n')).toBe(true)
-  return content.slice(0, -2).split('\r\n')
-}
 
 describe('print log line', () => {
   it('records date/time, Windows user, PC, Item Code, Pack Volume, Internal GTIN, Expiry, Lot and copies', () => {
@@ -72,15 +45,6 @@ describe('print log line', () => {
     const label = labelFor({ itemCode: 'A&B 01', packVolumeDigit: 0, lot: '(B)A5/29-1' })
     const fields = parseCsvLine(printLogLine(printLogEntryFor(label, { at, windowsUser: 'o"brien, k', pcName: 'PHARM-01' })).trimEnd())
     expect(fields).toEqual(['2026-10-19 14:03:07', 'o"brien, k', 'PHARM-01', 'A&B 01', '', label.internalGtin, '2027-12-31', '(B)A5/29-1', '3'])
-  })
-
-  it('quotes a field only when CSV needs it', () => {
-    expect(csvField('PARA01')).toBe('PARA01')
-    expect(csvField('AIR 01')).toBe('AIR 01')
-    expect(csvField('a,b')).toBe('"a,b"')
-    expect(csvField('say "hi"')).toBe('"say ""hi"""')
-    expect(csvField('two\nlines')).toBe('"two\nlines"')
-    expect(csvField(' leading')).toBe('" leading"')
   })
 
   it('names the file by month and PC', () => {
