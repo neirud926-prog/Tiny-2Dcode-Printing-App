@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatExpiry, parseExpiry } from '../../core/expiry'
-import { encodeInternalGtin, PACK_VOLUMES, type PackVolumeDigit } from '../../core/internalGtin'
+import { encodeInternalGtin, type PackVolumeDigit } from '../../core/internalGtin'
 import { describeItemList, formatFileDate, isLiquid, itemListProblems, type ItemListEntry, type ItemListInfo } from '../../core/itemList'
 import { buildLabel, type BuildLabelResult, type FieldMessage, type LabelField, type LabelRequest } from '../../core/label'
 import { lotPicker, type LotChoice } from '../../core/lotPicker'
@@ -12,6 +12,8 @@ import { AppHeader } from './AppHeader'
 import { LabelPreview } from './LabelPreview'
 import { LotPicker, type LotPickerView } from './LotPicker'
 import { OutcomeMessage } from './OutcomeMessage'
+import { PACK_VOLUME_CHOICES } from './packVolumeChoices'
+import { PendingLabelsDialog, usePendingLabels } from './PendingLabels'
 import { importedForToday, StockOnhandOutcome, StockOnhandStatus, useStockOnhandImport } from './StockOnhandImport'
 import { useToday } from './today'
 import { UnknownItemDialog } from './UnknownItemDialog'
@@ -28,12 +30,6 @@ const FORM_FIELDS: readonly FormField[] = ['itemCode', 'expiry', 'lot', 'copies'
 const COMPLETE_LENGTH: Record<FormField, number> = { itemCode: 6, expiry: 8, lot: 1, copies: 1 }
 
 const EMPTY_FORM: FormValues = { itemCode: '', expiry: '', lot: '', copies: '1' }
-
-/** The Pack Volume choices for a liquid, in mL: the listed volumes, then Other (digit 0, no volume encoded). */
-const PACK_VOLUME_CHOICES: readonly { digit: PackVolumeDigit; label: string; name: string }[] = [
-  ...PACK_VOLUMES.filter((entry) => entry.ml !== null).map((entry) => ({ digit: entry.digit, label: String(entry.ml), name: `${entry.ml} mL` })),
-  { digit: 0, label: 'Other', name: 'Other volume' }
-]
 
 const LOOKUP_PENDING = 'Press Enter to look up this Item Code in the Item List.'
 const LOOKUP_RUNNING = 'Looking up the Item Code…'
@@ -112,6 +108,8 @@ export function LabelScreen({
   const [stockLots, setStockLots] = useState<StockLots | null>(null)
   const [lotSource, setLotSource] = useState<LotSource | null>(null)
   const stockImporter = useStockOnhandImport(stockOnhand, onStockOnhandChanged)
+  const [pendingOpen, setPendingOpen] = useState(false)
+  const pending = usePendingLabels(itemList.importedAt)
   const inputs = useRef<Partial<Record<FormField, HTMLInputElement | null>>>({})
   const packVolumeGroup = useRef<HTMLDivElement | null>(null)
   const lotPickerGroup = useRef<HTMLDivElement | null>(null)
@@ -238,6 +236,13 @@ export function LabelScreen({
       void checkItemCode(previous.code, 'never')
     }
   }, [stamp]) // Runs only when the Item List changes; checkItemCode reads refs, not this render's state.
+
+  // A newer Item List made Pending Labels ready: show them, unless a dialog is already up.
+  useEffect(() => {
+    if (!pending.announce || unknownDialogFor !== null || hidden) return
+    pending.clearAnnounce()
+    setPendingOpen(true)
+  }, [pending, unknownDialogFor, hidden])
 
   useEffect(() => {
     if (pendingFocus === null || unknownDialogFor !== null) return
@@ -375,6 +380,30 @@ export function LabelScreen({
     inputs.current[field]?.select()
   }
 
+  /** Saves the form as a Pending Label (its Item Code is not in the Item List); on success the form is cleared. */
+  async function savePending(packVolumeDigit: number | null): Promise<{ ok: boolean; message: string }> {
+    const saved = await window.api.savePendingLabel({
+      itemCode: values.itemCode,
+      packVolumeDigit,
+      expiry: values.expiry,
+      lot: values.lot,
+      copies: parseCopies(values.copies)
+    })
+    if (!saved.ok) return saved
+    setValues(EMPTY_FORM)
+    setTouched(new Set())
+    setLookup(null)
+    lookupRef.current = null
+    setPackVolume(null)
+    setScan(null)
+    setLotSource(null)
+    setOutcome({ ok: true, message: saved.message, warning: null })
+    setUnknownDialogFor(null)
+    setPendingFocus('itemCode')
+    void pending.refresh()
+    return saved
+  }
+
   /** Sends the request (not the label): the main process rebuilds and checks it before printing. */
   async function print(): Promise<void> {
     if (!result.ok || printing) return
@@ -446,6 +475,13 @@ export function LabelScreen({
         <span className="header-info">
           Printer <strong>{settings.printerName}</strong>
         </span>
+        <button
+          type="button"
+          className={pending.ready > 0 ? 'button button--primary button--small' : 'button button--secondary button--small'}
+          onClick={() => setPendingOpen(true)}
+        >
+          Pending Labels{pending.total > 0 ? ` (${pending.total}${pending.ready > 0 ? `, ${pending.ready} ready` : ''})` : ''}
+        </button>
         <button type="button" className="button button--secondary button--small" onClick={onOpenSettings}>
           Settings
         </button>
@@ -568,6 +604,8 @@ export function LabelScreen({
             if (found?.status === 'found') focusAfterItemCode(found)
             return found?.status === 'found' || found?.status === 'unknown' ? found.status : null
           }}
+          saveBlocked={labelResult.ok ? null : 'Complete the Expiry, Lot and Copies first (Change Item Code).'}
+          onSavePending={savePending}
           onClose={() => {
             setUnknownDialogFor(null)
             touch('itemCode')
@@ -575,6 +613,7 @@ export function LabelScreen({
           }}
         />
       )}
+      {pendingOpen && <PendingLabelsDialog list={pending.list} refresh={pending.refresh} onClose={() => setPendingOpen(false)} />}
     </div>
   )
 }
