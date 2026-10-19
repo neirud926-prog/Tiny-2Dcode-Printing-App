@@ -210,7 +210,12 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 export function formatFileDate(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return 'unknown date'
-  return `${String(date.getDate()).padStart(2, '0')} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`
+  return formatShortDate({ year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate() })
+}
+
+/** A calendar date (`month` 1–12) as `dd Mon yyyy`, e.g. `19 Oct 2026`, in any locale. */
+export function formatShortDate(date: { readonly year: number; readonly month: number; readonly day: number }): string {
+  return `${String(date.day).padStart(2, '0')} ${MONTHS[date.month - 1]} ${date.year}`
 }
 
 /** e.g. `14,312 items, 942 liquids, file dated 19 Oct 2026`. */

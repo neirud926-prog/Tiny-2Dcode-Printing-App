@@ -1,1 +1,4 @@
 * text=auto eol=lf
+
+# Synthetic Stock Onhand reports keep the real report's bytes: CRLF line endings, Windows-1252 text.
+test-fixtures/*.ps -text
