@@ -6,10 +6,12 @@
     "scripts/**/*",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/core/**/*"
+    "src/core/**/*",
+    "src/render/**/*"
   ],
   "compilerOptions": {
     "composite": true,
-    "types": ["node", "electron-vite/node"]
+    "types": ["node", "electron-vite/node"],
+    "customConditions": ["node"]
   }
 }

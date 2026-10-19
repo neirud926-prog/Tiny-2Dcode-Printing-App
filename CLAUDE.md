@@ -19,7 +19,7 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`, both created when first needed
 ## Commands
 
 - `npm test`: vitest (`ITEM_LIST_PATH=/path/to/item_phq.txt npm test` adds a local check over a real Item List)
-- `npm run typecheck`: `tsc --noEmit` for `tsconfig.core.json` (pure `src/core/`, no Node or DOM types), `tsconfig.node.json` and `tsconfig.web.json`
+- `npm run typecheck`: `tsc --noEmit` for `tsconfig.core.json` (pure `src/core/` label core and `src/render/` label renderer, no Node, DOM or Electron types), `tsconfig.node.json` and `tsconfig.web.json`
 - `npm run build`: typecheck, then electron-vite build to `out/`
 - `npm run dev`: run the app with hot reload
 - `npm run test-vectors`: regenerate `test-vectors/internal-gtin-v1.csv`
