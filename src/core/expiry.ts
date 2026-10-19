@@ -70,6 +70,14 @@ export function formatExpiry(date: CalendarDate): string {
   return `${pad2(date.day)} ${MONTH_ABBREVIATIONS[date.month - 1]} ${date.year}`
 }
 
+/**
+ * The local calendar date of `date` as `yyyy-mm-dd` (not UTC: a label printed at 7 am is dated
+ * today). The caller reads the clock; this only formats.
+ */
+export function localIsoDate(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+}
+
 /** Parses an ISO local date `yyyy-mm-dd`; null if malformed or impossible. */
 export function parseIsoDate(iso: string): CalendarDate | null {
   const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(iso)

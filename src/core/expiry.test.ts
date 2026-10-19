@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkExpiry, expiryToGs1, formatExpiry, parseExpiry, parseIsoDate } from './expiry'
+import { checkExpiry, expiryToGs1, formatExpiry, localIsoDate, parseExpiry, parseIsoDate } from './expiry'
 
 /** Parses an entry that the test expects to be valid. */
 function parsed(input: string) {
@@ -102,6 +102,13 @@ describe('parseIsoDate', () => {
 
   it.each(['', '2026-10-1', '19-10-2026', '2026-02-30', '2026-13-01', '2026-10-19T00:00'])('refuses %j', (input) => {
     expect(parseIsoDate(input)).toBeNull()
+  })
+})
+
+describe('localIsoDate', () => {
+  it('formats the local calendar date, not the UTC one', () => {
+    expect(localIsoDate(new Date(2026, 9, 19, 0, 5))).toBe('2026-10-19')
+    expect(localIsoDate(new Date(2026, 0, 1, 23, 59))).toBe('2026-01-01')
   })
 })
 
