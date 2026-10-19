@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatExpiry, parseExpiry } from '../../core/expiry'
-import type { PendingLabelView } from '../../core/pendingLabel'
+import { pendingCounts, readyAnnouncement, type PendingLabelView } from '../../core/pendingLabel'
 import type { PendingLabelsList, PrintOutcome } from '../../preload/api'
 import { OutcomeMessage } from './OutcomeMessage'
 import { PACK_VOLUME_CHOICES } from './packVolumeChoices'
@@ -22,9 +22,9 @@ export function usePendingLabels(itemListStamp: string) {
     } catch (error) {
       answer = { ok: false, message: String(error) }
     }
-    const ready = new Set(answer.ok ? answer.labels.filter((label) => label.status === 'ready').map((label) => label.id) : [])
-    if (readyIds.current && [...ready].some((id) => !readyIds.current?.has(id))) setAnnounce(true)
-    readyIds.current = ready
+    const checked = readyAnnouncement(readyIds.current, answer.ok ? answer.labels : [])
+    if (checked.announce) setAnnounce(true)
+    readyIds.current = checked.ready
     setList(answer)
   }, [])
 
@@ -32,8 +32,14 @@ export function usePendingLabels(itemListStamp: string) {
     void refresh()
   }, [itemListStamp, refresh])
 
-  const labels = list?.ok ? list.labels : []
-  return { list, refresh, announce, clearAnnounce: () => setAnnounce(false), total: labels.length, ready: labels.filter((label) => label.status === 'ready').length }
+  // A Pending Label saved or made ready on another PC shows when the window is back in front.
+  useEffect(() => {
+    const onFocus = (): void => void refresh()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refresh])
+
+  return { list, refresh, announce, clearAnnounce: () => setAnnounce(false), ...pendingCounts(list?.ok ? list.labels : []) }
 }
 
 interface PendingLabelsDialogProps {

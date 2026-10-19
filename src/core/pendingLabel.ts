@@ -50,6 +50,20 @@ export function viewPendingLabels(labels: readonly PendingLabel[], index: ItemIn
   })
 }
 
+/**
+ * What a check of the Pending Labels finds: the ids ready now, and whether any became ready since
+ * the previous check (`previousReady`, null on the first check, which announces nothing).
+ */
+export function readyAnnouncement(previousReady: ReadonlySet<string> | null, labels: readonly PendingLabelView[]): { announce: boolean; ready: ReadonlySet<string> } {
+  const ready = new Set(labels.filter((label) => label.status === 'ready').map((label) => label.id))
+  return { announce: previousReady !== null && [...ready].some((id) => !previousReady.has(id)), ready }
+}
+
+/** The numbers on the Pending Labels button. */
+export function pendingCounts(labels: readonly PendingLabelView[]): { ready: number; total: number } {
+  return { ready: labels.filter((label) => label.status === 'ready').length, total: labels.length }
+}
+
 /** The label request for a Pending Label; a non-liquid has no Pack Volume, so null counts as 0 (none). */
 export function pendingLabelRequest(label: Pick<PendingLabel, 'itemCode' | 'packVolumeDigit' | 'expiry' | 'lot' | 'copies'>): LabelRequest {
   return { itemCode: label.itemCode, packVolumeDigit: label.packVolumeDigit ?? 0, expiry: label.expiry, lot: label.lot, copies: label.copies }
