@@ -3,6 +3,7 @@
  * `pending.dat` until a newer Item List lists the code. Pure: no Electron, no file access.
  */
 
+import { parseExpiry } from './expiry'
 import { isLiquid, lookupItem, type ItemIndex } from './itemList'
 import type { LabelRequest } from './label'
 
@@ -39,12 +40,18 @@ export interface PendingLabelInput {
 /** A Pending Label with what the Item List in use says about it now. */
 export type PendingLabelView = PendingLabel & (
   | { readonly status: 'waiting' }
+  | { readonly status: 'expired' }
   | { readonly status: 'ready'; readonly itemName: string; readonly liquid: boolean }
 )
 
-/** The Item List's say on each Pending Label: `ready` once its Item Code is listed. */
-export function viewPendingLabels(labels: readonly PendingLabel[], index: ItemIndex | null): PendingLabelView[] {
+/**
+ * The Item List's say on each Pending Label: `ready` once its Item Code is listed. `today` is the
+ * local date as `yyyy-mm-dd`; a Pending Label whose Expiry is before it is `expired` whatever the
+ * Item List says (it can never print).
+ */
+export function viewPendingLabels(labels: readonly PendingLabel[], index: ItemIndex | null, today: string): PendingLabelView[] {
   return labels.map((label) => {
+    if (isExpired(label, today)) return { ...label, status: 'expired' }
     const item = index ? lookupItem(index, label.itemCode) : null
     return item ? { ...label, status: 'ready', itemName: item.name, liquid: isLiquid(item) } : { ...label, status: 'waiting' }
   })
@@ -62,6 +69,14 @@ export function readyAnnouncement(previousReady: ReadonlySet<string> | null, lab
 /** The numbers on the Pending Labels button. */
 export function pendingCounts(labels: readonly PendingLabelView[]): { ready: number; total: number } {
   return { ready: labels.filter((label) => label.status === 'ready').length, total: labels.length }
+}
+
+/** Whether the Expiry is before `today` (`yyyy-mm-dd`); the day itself has not passed. */
+export function isExpired(label: Pick<PendingLabel, 'expiry'>, today: string): boolean {
+  const parsed = parseExpiry(label.expiry)
+  if (!parsed.ok) return false
+  const { year, month, day } = parsed.expiry
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` < today
 }
 
 /** The label request for a Pending Label; a non-liquid has no Pack Volume, so null counts as 0 (none). */

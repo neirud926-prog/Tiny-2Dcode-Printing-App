@@ -15,7 +15,8 @@ const api: PreloadApi = {
   savePendingLabel: (request) => ipcRenderer.invoke(IPC_CHANNELS.savePendingLabel, request),
   listPendingLabels: () => ipcRenderer.invoke(IPC_CHANNELS.listPendingLabels),
   printPendingLabel: (id, packVolumeDigit) => ipcRenderer.invoke(IPC_CHANNELS.printPendingLabel, { id, packVolumeDigit }),
-  deletePendingLabel: (id) => ipcRenderer.invoke(IPC_CHANNELS.deletePendingLabel, id)
+  deletePendingLabel: (id) => ipcRenderer.invoke(IPC_CHANNELS.deletePendingLabel, id),
+  deleteExpiredPendingLabels: () => ipcRenderer.invoke(IPC_CHANNELS.deleteExpiredPendingLabels)
 }
 
 contextBridge.exposeInMainWorld('api', api)

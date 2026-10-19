@@ -3,12 +3,13 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { indexItems } from '../core/itemList'
 import type { PendingLabelInput } from '../core/pendingLabel'
+import { addPending } from '../data/pendingStore'
 import { appendPrintLog, PRINT_LOG_HEADER } from '../data/printLog'
 import { tempFolder } from '../data/testFolder'
 import { DOT_MM } from '../render/dataMatrix'
 import type { LabelPrintJob } from '../render/printJob'
 import type { PcSettings } from '../render/printSettings'
-import { deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
+import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
 import type { DriverResult, PrintServiceDeps } from './printService'
 
 const settings: PcSettings = { printerName: 'ZDesigner GX420t', labelSize: { widthMm: 30, heightMm: 20 }, offsetXmm: 2 * DOT_MM, offsetYmm: 0, logFolder: null }
@@ -22,6 +23,7 @@ const after = indexItems([
 
 /** 19 Oct 2026 14:03:07 local time. */
 const now = new Date(2026, 9, 19, 14, 3, 7)
+const today = '2026-10-19'
 
 const tablet: PendingLabelInput = { itemCode: 'new001', packVolumeDigit: null, expiry: '31122027', lot: '2512172-1', copies: 2 }
 
@@ -43,7 +45,7 @@ async function setup(driver: DriverResult = { ok: true }) {
 
 /** The first Pending Label listed. */
 async function firstPending(dataFolder: string, index: Parameters<typeof listPendingLabels>[1]) {
-  const list = await listPendingLabels(dataFolder, index)
+  const list = await listPendingLabels(dataFolder, index, today)
   if (!list.ok || list.labels.length === 0) throw new Error('expected a Pending Label')
   return list.labels[0]
 }
@@ -54,17 +56,17 @@ describe('Pending Labels', () => {
     const saved = await savePendingLabel(tablet, context, deps)
     expect(saved.ok).toBe(true)
 
-    const waiting = await listPendingLabels(dataFolder, before)
+    const waiting = await listPendingLabels(dataFolder, before, today)
     expect(waiting).toMatchObject({ ok: true, labels: [{ itemCode: 'NEW001', lot: '2512172-1', copies: 2, savedBy: 'chantm', pc: 'PHARM-01', status: 'waiting' }] })
 
-    const ready = await listPendingLabels(dataFolder, after)
+    const ready = await listPendingLabels(dataFolder, after, today)
     expect(ready).toMatchObject({ ok: true, labels: [{ itemCode: 'NEW001', status: 'ready', itemName: 'SYNTHETIC NEWDRUG TABLET', liquid: false }] })
   })
 
   it('waits when no Item List is imported', async () => {
     const { dataFolder, context, deps } = await setup()
     await savePendingLabel(tablet, context, deps)
-    expect(await listPendingLabels(dataFolder, null)).toMatchObject({ ok: true, labels: [{ status: 'waiting' }] })
+    expect(await listPendingLabels(dataFolder, null, today)).toMatchObject({ ok: true, labels: [{ status: 'waiting' }] })
   })
 
   it('refuses to save what the label core would refuse', async () => {
@@ -73,7 +75,7 @@ describe('Pending Labels', () => {
       expect((await savePendingLabel(bad, context, deps)).ok).toBe(false)
     }
     expect((await savePendingLabel('nonsense', context, deps)).ok).toBe(false)
-    expect(await listPendingLabels(dataFolder, after)).toEqual({ ok: true, labels: [] })
+    expect(await listPendingLabels(dataFolder, after, today)).toEqual({ ok: true, labels: [] })
   })
 
   it('prints a ready Pending Label with one call, logs it like any print and removes it', async () => {
@@ -92,7 +94,7 @@ describe('Pending Labels', () => {
     expect(log[1]).toContain('NEW001')
     expect(log[1]).toContain('2512172-1')
 
-    expect(await listPendingLabels(dataFolder, after)).toEqual({ ok: true, labels: [] })
+    expect(await listPendingLabels(dataFolder, after, today)).toEqual({ ok: true, labels: [] })
   })
 
   it('does not print a Pending Label twice', async () => {
@@ -114,7 +116,7 @@ describe('Pending Labels', () => {
     const outcome = await printPendingLabel(id, null, settings, before, context, deps)
     expect(outcome).toEqual({ ok: false, message: expect.stringContaining('not in the Item List') })
     expect(jobs).toHaveLength(0)
-    expect(await listPendingLabels(dataFolder, before)).toMatchObject({ labels: [{ id }] })
+    expect(await listPendingLabels(dataFolder, before, today)).toMatchObject({ labels: [{ id }] })
   })
 
   it('puts a Pending Label back when the printer fails, and logs nothing', async () => {
@@ -123,7 +125,7 @@ describe('Pending Labels', () => {
     const { id } = (await firstPending(dataFolder, after))
     const outcome = await printPendingLabel(id, null, settings, after, context, deps)
     expect(outcome).toEqual({ ok: false, message: expect.stringContaining('out of labels') })
-    expect(await listPendingLabels(dataFolder, after)).toMatchObject({ labels: [{ id }] })
+    expect(await listPendingLabels(dataFolder, after, today)).toMatchObject({ labels: [{ id }] })
     await expect(readFile(logFile)).rejects.toThrow()
   })
 
@@ -143,7 +145,59 @@ describe('Pending Labels', () => {
     const { id } = (await firstPending(dataFolder, after))
     expect(await deletePendingLabel(dataFolder, id)).toEqual({ ok: true })
     expect(await deletePendingLabel(dataFolder, id)).toMatchObject({ ok: false })
-    expect(await listPendingLabels(dataFolder, after)).toEqual({ ok: true, labels: [] })
+    expect(await listPendingLabels(dataFolder, after, today)).toEqual({ ok: true, labels: [] })
     expect(jobs).toHaveLength(0)
+  })
+
+  describe('expired', () => {
+    /** Saved on another day, so its Expiry has since passed (a save today would be refused). */
+    async function addDirect(dataFolder: string, itemCode: string, expiry: string, pc = 'PHARM-02') {
+      const added = await addPending(dataFolder, { itemCode, packVolumeDigit: null, expiry, lot: 'L1', copies: 1, savedBy: 'chantm', pc })
+      if (!added.ok) throw new Error(added.message)
+      return added.value
+    }
+
+    it('lists an expired Pending Label as expired, even when its Item Code is listed', async () => {
+      const { dataFolder } = await setup()
+      await addDirect(dataFolder, 'NEW001', '18102026')
+      await addDirect(dataFolder, 'NEW001', '19102026')
+      const list = await listPendingLabels(dataFolder, after, today)
+      expect(list).toMatchObject({ ok: true, labels: [{ status: 'expired' }, { status: 'ready' }] })
+    })
+
+    it('refuses to print an expired one with a clear message, and keeps it', async () => {
+      const { dataFolder, context, deps, jobs } = await setup()
+      const expired = await addDirect(dataFolder, 'NEW001', '18102026')
+      const outcome = await printPendingLabel(expired.id, null, settings, after, context, deps)
+      expect(outcome).toEqual({ ok: false, message: expect.stringMatching(/Not printed: .*NEW001.*expired.*18 OCT 2026/) })
+      expect(jobs).toHaveLength(0)
+      expect(await listPendingLabels(dataFolder, after, today)).toMatchObject({ labels: [{ id: expired.id, status: 'expired' }] })
+    })
+
+    it('deletes only the expired ones and reports how many', async () => {
+      const { dataFolder } = await setup()
+      await addDirect(dataFolder, 'NEW001', '18102026')
+      await addDirect(dataFolder, 'ZZZ999', '01012026')
+      const live = await addDirect(dataFolder, 'NEW001', '19102026')
+      const waiting = await addDirect(dataFolder, 'ZZZ999', '31122027')
+      expect(await deleteExpiredPendingLabels(dataFolder, today)).toEqual({ ok: true, deleted: 2 })
+      const list = await listPendingLabels(dataFolder, after, today)
+      expect(list).toMatchObject({ ok: true, labels: [{ id: live.id }, { id: waiting.id }] })
+      expect(await deleteExpiredPendingLabels(dataFolder, today)).toEqual({ ok: true, deleted: 0 })
+    })
+
+    it('loses no update when two PCs delete expired ones while a third saves', async () => {
+      const { dataFolder, context, deps } = await setup()
+      for (let i = 0; i < 5; i++) await addDirect(dataFolder, `OLD00${i}`, '01012026')
+      const [first, second, saved] = await Promise.all([
+        deleteExpiredPendingLabels(dataFolder, today),
+        deleteExpiredPendingLabels(dataFolder, today),
+        savePendingLabel(tablet, { ...context, pcName: 'PHARM-03' }, deps)
+      ])
+      expect(saved.ok).toBe(true)
+      expect(first.ok && second.ok).toBe(true)
+      expect((first.ok ? first.deleted : 0) + (second.ok ? second.deleted : 0)).toBe(5)
+      expect(await listPendingLabels(dataFolder, null, today)).toMatchObject({ ok: true, labels: [{ itemCode: 'NEW001', status: 'waiting' }] })
+    })
   })
 })

@@ -4,19 +4,19 @@
  * printing it (through the same checks, self-check and print log as any label) and deleting it.
  */
 
-import { localIsoDate } from '../core/expiry'
+import { formatExpiry, localIsoDate, parseExpiry } from '../core/expiry'
 import { isLiquid, lookupItem, type ItemIndex } from '../core/itemList'
 import { buildLabel } from '../core/label'
-import { pendingLabelRequest, viewPendingLabels, type PendingLabelInput } from '../core/pendingLabel'
-import { addPending, defaultPendingDeps, readPending, removePending, restorePending } from '../data/pendingStore'
-import type { DeletePendingOutcome, PendingLabelsList, PrintOutcome, SavePendingOutcome } from '../preload/api'
+import { isExpired, pendingLabelRequest, viewPendingLabels, type PendingLabelInput } from '../core/pendingLabel'
+import { addPending, changePending, defaultPendingDeps, readPending, removePending, restorePending } from '../data/pendingStore'
+import type { DeleteExpiredOutcome, DeletePendingOutcome, PendingLabelsList, PrintOutcome, SavePendingOutcome } from '../preload/api'
 import type { PcSettings } from '../render/printSettings'
 import { printLabelRequest, type PrintContext, type PrintServiceDeps } from './printService'
 
-/** Lists the Pending Labels against the Item List in use (null if none): the recheck after every import. */
-export async function listPendingLabels(dataFolder: string, itemList: ItemIndex | null): Promise<PendingLabelsList> {
+/** Lists the Pending Labels against the Item List in use (null if none) and `today` (`yyyy-mm-dd`): the recheck after every import. */
+export async function listPendingLabels(dataFolder: string, itemList: ItemIndex | null, today: string): Promise<PendingLabelsList> {
   const read = await readPending(dataFolder)
-  return read.ok ? { ok: true, labels: viewPendingLabels(read.labels, itemList) } : read
+  return read.ok ? { ok: true, labels: viewPendingLabels(read.labels, itemList, today) } : read
 }
 
 /** Saves a request as a Pending Label if the label core would accept it (its Item Code may be unlisted). */
@@ -66,6 +66,10 @@ export async function printPendingLabel(
   const pending = read.labels.find((label) => label.id === id)
   if (!pending) return refused('that Pending Label is no longer there; another PC may have printed or deleted it.')
   const item = lookupItem(itemList, pending.itemCode)
+  if (isExpired(pending, localIsoDate(deps.now()))) {
+    const expiry = parseExpiry(pending.expiry)
+    return refused(`${pending.itemCode} has expired (Expiry ${expiry.ok ? formatExpiry(expiry.expiry) : pending.expiry}); delete it.`)
+  }
   if (!item) return refused(`${pending.itemCode} is not in the Item List yet.`)
 
   const digit = pending.packVolumeDigit ?? packVolumeDigit ?? null
@@ -86,6 +90,15 @@ export async function deletePendingLabel(dataFolder: string, id: unknown): Promi
   if (typeof id !== 'string') return { ok: false, message: 'The request is not valid.' }
   const removed = await removePending(dataFolder, id)
   return removed.ok ? { ok: true } : { ok: false, message: removed.message }
+}
+
+/** Deletes every expired Pending Label in one locked change and says how many it removed. */
+export async function deleteExpiredPendingLabels(dataFolder: string, today: string): Promise<DeleteExpiredOutcome> {
+  const changed = await changePending(dataFolder, (labels) => {
+    const kept = labels.filter((label) => !isExpired(label, today))
+    return { ok: true, labels: kept, value: labels.length - kept.length }
+  })
+  return changed.ok ? { ok: true, deleted: changed.value } : { ok: false, message: changed.message }
 }
 
 function refused(message: string): PrintOutcome {

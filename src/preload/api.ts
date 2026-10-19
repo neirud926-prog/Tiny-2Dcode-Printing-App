@@ -87,6 +87,8 @@ export type PendingLabelsList = { readonly ok: true; readonly labels: readonly P
 export type SavePendingOutcome = { readonly ok: true; readonly message: string } | { readonly ok: false; readonly message: string }
 
 export type DeletePendingOutcome = { readonly ok: true } | { readonly ok: false; readonly message: string }
+/** `deleted` is how many expired Pending Labels were removed (0 if there were none). */
+export type DeleteExpiredOutcome = { readonly ok: true; readonly deleted: number } | { readonly ok: false; readonly message: string }
 
 export type SaveSettingsOutcome = { readonly ok: true; readonly settings: PcSettings } | { readonly ok: false; readonly message: string }
 
@@ -132,6 +134,8 @@ export interface PreloadApi {
    */
   printPendingLabel(id: string, packVolumeDigit: number | null): Promise<PrintOutcome>
   deletePendingLabel(id: string): Promise<DeletePendingOutcome>
+  /** Deletes every expired Pending Label (Expiry before this PC's today) in one locked change. */
+  deleteExpiredPendingLabels(): Promise<DeleteExpiredOutcome>
 }
 
 /** IPC channel for each API method. */
@@ -149,5 +153,6 @@ export const IPC_CHANNELS = {
   savePendingLabel: 'save-pending-label',
   listPendingLabels: 'list-pending-labels',
   printPendingLabel: 'print-pending-label',
-  deletePendingLabel: 'delete-pending-label'
+  deletePendingLabel: 'delete-pending-label',
+  deleteExpiredPendingLabels: 'delete-expired-pending-labels'
 } as const satisfies Record<keyof PreloadApi, string>
