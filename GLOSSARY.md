@@ -1,6 +1,6 @@
 # Tiny 2D-code Printing App
 
-Prints GS1 DataMatrix labels for NLTH Pharmacy packs that lack one, so BCS (Bar-Code Stock Replenishment) can scan them like manufacturer stock.
+Prints GS1 DataMatrix labels for the few NLTH Pharmacy items that have no Manufacturer GTIN (unregistered items, clinical-trial drugs), so BCS (Bar-Code Stock Replenishment) can scan them like manufacturer stock.
 
 ## Language
 
@@ -15,7 +15,7 @@ The GTIN a supplier assigned and printed on its own pack.
 _Avoid_: real GTIN, barcode
 
 **Internal GTIN**:
-A GTIN derived from an Item Code under GS1's internal-use prefix 04; meaningful only inside NLTH / HA.
+A GTIN derived from an Item Code under GS1's internal-use prefix 04, used only for the rare items with no Manufacturer GTIN; meaningful only inside NLTH / HA. It is a GTIN like any other.
 _Avoid_: self-defined GTIN, fake GTIN, dummy GTIN
 
 **Pack Volume**:
@@ -39,6 +39,16 @@ _Avoid_: stock list, inventory file
 **Pending Label**:
 A label request whose Item Code is not yet in the Item List, kept until a newer Item List is imported.
 _Avoid_: follow-up (BCS uses Follow-up for Not Match scans), to-do
+
+### Labels scanned in
+
+**Shelf Label**:
+The QR label on a shelf bin carrying the Item Code and bin, e.g. `PARA01_1C5A_B…aR` (NLTH) or `PARA01_1C5A` (another site).
+_Avoid_: bin label, shelf QR code
+
+**Dispensing-bag Label**:
+The label on a dispensed bag: the Item Code alone (out-patient) or 13 characters with the Item Code at characters 5–10 (in-patient).
+_Avoid_: bag sticker, patient label
 
 ### Symbols
 
