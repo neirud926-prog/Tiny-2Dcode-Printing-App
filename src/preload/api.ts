@@ -6,6 +6,7 @@
 
 import type { ItemListEntry, ItemListImportResult, ItemListInfo } from '../core/itemList'
 import type { LabelRequest } from '../core/label'
+import type { PendingLabelInput, PendingLabelView } from '../core/pendingLabel'
 import type { StockLot, StockOnhandImportResult, StockOnhandInfo } from '../core/stockOnhand'
 import type { PcSettings } from '../render/printSettings'
 
@@ -80,6 +81,13 @@ export type ItemLookup =
       readonly itemList: ItemListInfo | null
     }
 
+/** The Pending Labels, each with what the Item List in use says about it now. */
+export type PendingLabelsList = { readonly ok: true; readonly labels: readonly PendingLabelView[] } | { readonly ok: false; readonly message: string }
+
+export type SavePendingOutcome = { readonly ok: true; readonly message: string } | { readonly ok: false; readonly message: string }
+
+export type DeletePendingOutcome = { readonly ok: true } | { readonly ok: false; readonly message: string }
+
 export type SaveSettingsOutcome = { readonly ok: true; readonly settings: PcSettings } | { readonly ok: false; readonly message: string }
 
 export interface PreloadApi {
@@ -111,6 +119,19 @@ export interface PreloadApi {
    * then adds a print log line.
    */
   printLabel(request: LabelRequest): Promise<PrintOutcome>
+  /**
+   * Saves a label request whose Item Code is not in the Item List as a Pending Label in the shared
+   * `pending.dat`. Everything but the Item List check applies, as for a label.
+   */
+  savePendingLabel(request: PendingLabelInput): Promise<SavePendingOutcome>
+  /** The Pending Labels, checked against the Item List in use (picking up a newer one another PC imported). */
+  listPendingLabels(): Promise<PendingLabelsList>
+  /**
+   * Prints a Pending Label whose Item Code is now listed, through the same checks, self-check and
+   * print log as any label, then removes it. `packVolumeDigit` chooses the Pack Volume of a liquid saved without one.
+   */
+  printPendingLabel(id: string, packVolumeDigit: number | null): Promise<PrintOutcome>
+  deletePendingLabel(id: string): Promise<DeletePendingOutcome>
 }
 
 /** IPC channel for each API method. */
@@ -124,5 +145,9 @@ export const IPC_CHANNELS = {
   chooseLogFolder: 'choose-log-folder',
   testPrint: 'test-print',
   savePrinterSettings: 'save-printer-settings',
-  printLabel: 'print-label'
+  printLabel: 'print-label',
+  savePendingLabel: 'save-pending-label',
+  listPendingLabels: 'list-pending-labels',
+  printPendingLabel: 'print-pending-label',
+  deletePendingLabel: 'delete-pending-label'
 } as const satisfies Record<keyof PreloadApi, string>

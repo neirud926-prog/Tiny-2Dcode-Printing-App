@@ -11,7 +11,11 @@ const api: PreloadApi = {
   chooseLogFolder: () => ipcRenderer.invoke(IPC_CHANNELS.chooseLogFolder),
   testPrint: (settings) => ipcRenderer.invoke(IPC_CHANNELS.testPrint, settings),
   savePrinterSettings: (settings) => ipcRenderer.invoke(IPC_CHANNELS.savePrinterSettings, settings),
-  printLabel: (request) => ipcRenderer.invoke(IPC_CHANNELS.printLabel, request)
+  printLabel: (request) => ipcRenderer.invoke(IPC_CHANNELS.printLabel, request),
+  savePendingLabel: (request) => ipcRenderer.invoke(IPC_CHANNELS.savePendingLabel, request),
+  listPendingLabels: () => ipcRenderer.invoke(IPC_CHANNELS.listPendingLabels),
+  printPendingLabel: (id, packVolumeDigit) => ipcRenderer.invoke(IPC_CHANNELS.printPendingLabel, { id, packVolumeDigit }),
+  deletePendingLabel: (id) => ipcRenderer.invoke(IPC_CHANNELS.deletePendingLabel, id)
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -11,14 +11,18 @@ import {
   type ImportItemListOutcome,
   type ImportStockOnhandOutcome,
   type ItemLookup,
+  type DeletePendingOutcome,
+  type PendingLabelsList,
   type PreloadApi,
   type PrinterChoice,
   type PrintOutcome,
+  type SavePendingOutcome,
   type SaveSettingsOutcome,
   type StockLotsLookup
 } from '../preload/api'
 import { normalisePcSettings, type PcSettings } from '../render/printSettings'
 import { itemLookupFor, stockLotsLookupFor } from './itemLookup'
+import { deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
 import { printerProblem, printLabelRequest, printTestLabel, type PrintContext, type PrintServiceDeps } from './printService'
 import { sendToPrinter } from './printWindow'
 
@@ -59,7 +63,18 @@ export function registerIpc(context: IpcContext): void {
       exclusively(async () => {
         const itemList = folderReady ? await itemLists.current() : null
         return printLabelRequest(request, folderReady ? settings : null, itemList?.index ?? null, context, deps)
-      })
+      }),
+    savePendingLabel: (_event, request) =>
+      folderReady ? savePendingLabel(request, context, deps) : Promise.resolve<SavePendingOutcome>({ ok: false, message: 'Not saved: the data folder is not ready.' }),
+    listPendingLabels: listPendingLabelsNow,
+    printPendingLabel: (_event, arg) =>
+      exclusively(async () => {
+        const { id, packVolumeDigit } = (typeof arg === 'object' && arg !== null ? arg : {}) as { id?: unknown; packVolumeDigit?: unknown }
+        const itemList = folderReady ? await itemLists.current() : null
+        return printPendingLabel(id, packVolumeDigit, folderReady ? settings : null, itemList?.index ?? null, context, deps)
+      }),
+    deletePendingLabel: (_event, id) =>
+      folderReady ? deletePendingLabel(dataFolder, id) : Promise.resolve<DeletePendingOutcome>({ ok: false, message: 'The data folder is not ready.' })
   }
 
   for (const method of Object.keys(handlers) as (keyof PreloadApi)[]) {
@@ -95,6 +110,11 @@ export function registerIpc(context: IpcContext): void {
       stockOnhand: stock.status === 'ok' ? stock.stock.info : null,
       stockOnhandNotice: stock.status === 'tampered' || stock.status === 'unreadable' ? `${stock.message} Import today's Stock Onhand again.` : null
     }
+  }
+
+  async function listPendingLabelsNow(): Promise<PendingLabelsList> {
+    if (!folderReady) return { ok: false, message: 'The data folder is not ready.' }
+    return listPendingLabels(dataFolder, (await itemLists.current())?.index ?? null)
   }
 
   async function importItemList(event: IpcMainInvokeEvent): Promise<ImportItemListOutcome> {
