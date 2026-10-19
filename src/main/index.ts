@@ -3,8 +3,9 @@ import { join } from 'node:path'
 
 function createMainWindow(): void {
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    // Wide enough for the form beside a 4× label preview.
+    width: 1000,
+    height: 720,
     show: false,
     autoHideMenuBar: true,
     webPreferences: {

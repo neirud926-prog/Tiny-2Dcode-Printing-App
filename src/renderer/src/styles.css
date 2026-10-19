@@ -1,0 +1,263 @@
+:root {
+  --text: #1d2939;
+  --muted: #667085;
+  --border: #d0d5dd;
+  --surface: #ffffff;
+  --background: #f2f4f7;
+  --accent: #175cd3;
+  --error: #b42318;
+  --error-surface: #fef3f2;
+  --warning: #93370d;
+  --warning-surface: #fffaeb;
+  --warning-border: #fec84b;
+  --ok: #067647;
+  --ok-surface: #ecfdf3;
+
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--background);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 12px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.app-header__note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px 24px;
+  align-items: start;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px 20px;
+}
+
+.panel h2 {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+/* Form */
+
+.field {
+  margin-bottom: 14px;
+}
+
+.field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.field__input {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.field input {
+  font: inherit;
+  font-size: 18px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 100%;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.field input.code {
+  /* A monospace face keeps 0/O and 1/I apart in codes. */
+  font-family: Consolas, 'Cascadia Mono', Menlo, monospace;
+  letter-spacing: 0.04em;
+}
+
+.field input.copies {
+  width: 6em;
+}
+
+.field input::placeholder {
+  color: #98a2b3;
+}
+
+.field input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.field input.invalid {
+  border-color: var(--error);
+  background: var(--error-surface);
+}
+
+.field__confirmation {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.field__messages {
+  min-height: 1.2em;
+  margin-top: 4px;
+}
+
+.message {
+  font-size: 13px;
+}
+
+.message + .message {
+  margin-top: 2px;
+}
+
+.message--hint {
+  color: var(--muted);
+}
+
+.message--error {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.message--warning {
+  color: var(--warning);
+  background: var(--warning-surface);
+  border: 1px solid var(--warning-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.print-button {
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 8px 28px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.print-button:disabled {
+  border-color: var(--border);
+  background: #eaecf0;
+  color: #98a2b3;
+}
+
+.actions__note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Preview */
+
+.label-frame {
+  max-width: 100%;
+  background: #fff;
+  border: 1px solid #98a2b3;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(16, 24, 40, 0.12);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.label-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.label-svg svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.label-empty {
+  color: var(--muted);
+  padding: 24px;
+  text-align: center;
+}
+
+.preview-caption {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.self-check {
+  margin-top: 14px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.self-check--ok {
+  color: var(--ok);
+  background: var(--ok-surface);
+}
+
+.self-check--fail {
+  color: var(--error);
+  background: var(--error-surface);
+}
+
+.gs1-data {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.gs1-data code {
+  font-family: Consolas, 'Cascadia Mono', Menlo, monospace;
+  color: var(--text);
+}
