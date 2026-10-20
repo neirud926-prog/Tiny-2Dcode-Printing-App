@@ -128,7 +128,7 @@ export function renderLabelSvg(label: Label, size: LabelSize = DEFAULT_LABEL_SIZ
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}" ` +
     `font-family="${FONT_FAMILY}" xml:space="preserve">` +
-    `<rect width="${w}" height="${h}" fill="#fff"/>` +
+    `<rect width="${w}" height="${h}" fill="white"/>` +
     `<svg x="${mm(symbol.xMm)}" y="${mm(symbol.yMm)}" width="${mm(symbol.widthMm)}" height="${mm(symbol.heightMm)}" ` +
     `viewBox="${symbol.viewBox}" shape-rendering="crispEdges">${symbol.markup}</svg>` +
     [layout.itemCodeLine, layout.expiryLine, layout.lotLine].map(textLineSvg).join('') +

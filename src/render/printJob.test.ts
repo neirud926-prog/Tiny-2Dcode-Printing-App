@@ -64,6 +64,12 @@ describe('buildLabelPrintJob', () => {
     expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`)
     expect(html).not.toMatch(/<script/i)
   })
+
+  it('holds no "#", so a data: URL of the page cannot be cut short at a fragment', () => {
+    for (const lot of ['2512172-1', '(B)A52921725A4', 'ABCDEFGHIJ/012345678']) {
+      expect(buildLabelPrintJob(labelFor({ lot }), settings).html).not.toContain('#')
+    }
+  })
 })
 
 describe('htmlDataUrl', () => {
