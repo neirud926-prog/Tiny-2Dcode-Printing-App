@@ -5,11 +5,9 @@
  * exclusively; a lock older than `STALE_LOCK_MS` was left by a PC that stopped mid-change and is
  * taken over. A damaged or changed `pending.dat` is refused, never replaced.
  */
-import { randomUUID } from 'node:crypto'
-import { open, rename, stat, unlink } from 'node:fs/promises'
-import { join } from 'node:path'
 import { MAX_PENDING_LABELS, type PendingLabel } from '../core/pendingLabel'
 import { errorCode, errorText } from './atomicWrite'
+import { platform } from './platform'
 import { readSealed, writeSealed } from './sealed'
 
 export const PENDING_FILE_NAME = 'pending.dat'
@@ -21,11 +19,11 @@ export const STALE_LOCK_MS = 30_000
 export const LOCK_RETRY_DELAYS_MS: readonly number[] = [25, 50, 100, 200, 400, 400, 800, 800, 800, 800, 1000, 1000, 1000, 1000, 1000, 1000]
 
 export function pendingPath(dataFolder: string): string {
-  return join(dataFolder, PENDING_FILE_NAME)
+  return platform().path.join(dataFolder, PENDING_FILE_NAME)
 }
 
 export function pendingLockPath(dataFolder: string): string {
-  return join(dataFolder, PENDING_LOCK_NAME)
+  return platform().path.join(dataFolder, PENDING_LOCK_NAME)
 }
 
 /** What the Pending Label store uses from outside, replaceable in tests. */
@@ -80,7 +78,7 @@ export async function changePending<T>(
     }
     return { ok: true, value: changed.value }
   } finally {
-    await unlink(pendingLockPath(dataFolder)).catch(() => undefined)
+    await platform().fs.unlink(pendingLockPath(dataFolder)).catch(() => undefined)
   }
 }
 
@@ -96,7 +94,7 @@ export function addPending(
       if (labels.length >= MAX_PENDING_LABELS) {
         return { ok: false, message: `There are already ${MAX_PENDING_LABELS} Pending Labels. Print or delete some first.` }
       }
-      const saved: PendingLabel = { ...label, id: randomUUID(), savedAt: deps.now().toISOString() }
+      const saved: PendingLabel = { ...label, id: crypto.randomUUID(), savedAt: deps.now().toISOString() }
       return { ok: true, labels: [...labels, saved], value: saved }
     },
     deps
@@ -130,8 +128,7 @@ async function takeLock(dataFolder: string, deps: PendingStoreDeps): Promise<{ o
   const path = pendingLockPath(dataFolder)
   for (let attempt = 0; ; attempt++) {
     try {
-      const handle = await open(path, 'wx')
-      await handle.close()
+      await platform().fs.createFile(path, new Uint8Array())
       return { ok: true }
     } catch (error) {
       if (errorCode(error) !== 'EEXIST') {
@@ -154,23 +151,24 @@ async function takeLock(dataFolder: string, deps: PendingStoreDeps): Promise<{ o
  * window for two PCs breaking one lock at once; it cannot close it, which is enough for a few PCs.
  */
 async function breakStaleLock(path: string): Promise<boolean> {
-  const clock = `${path}.clock-${randomUUID()}`
+  const { fs } = platform()
+  const clock = `${path}.clock-${crypto.randomUUID()}`
   try {
-    const lockStats = await stat(path)
-    await (await open(clock, 'wx')).close()
-    const serverNow = (await stat(clock)).mtimeMs
+    const lockStats = await fs.stat(path)
+    await fs.createFile(clock, new Uint8Array())
+    const serverNow = (await fs.stat(clock)).mtimeMs
     if (serverNow - lockStats.mtimeMs < STALE_LOCK_MS) return false
     // Another PC may have broken this lock and taken a new one meanwhile: only the lock judged stale goes.
-    if ((await stat(path)).mtimeMs !== lockStats.mtimeMs) return false
-    const aside = `${path}.stale-${randomUUID()}`
-    await rename(path, aside)
-    await unlink(aside).catch(() => undefined)
+    if ((await fs.stat(path)).mtimeMs !== lockStats.mtimeMs) return false
+    const aside = `${path}.stale-${crypto.randomUUID()}`
+    await fs.rename(path, aside)
+    await fs.unlink(aside).catch(() => undefined)
     return true
   } catch (error) {
     // Gone already (released or broken by another PC): try to take it again.
     return errorCode(error) === 'ENOENT'
   } finally {
-    await unlink(clock).catch(() => undefined)
+    await fs.unlink(clock).catch(() => undefined)
   }
 }
 

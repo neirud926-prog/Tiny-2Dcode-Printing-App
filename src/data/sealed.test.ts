@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { gzipSync } from 'node:zlib'
+import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { readSealed, SEALED_FILE_KEY, SEALED_MAGIC, SEALED_VERSION, seal, writeSealed } from './sealed'
 import { tempFolder } from './testFolder'
@@ -25,7 +25,7 @@ describe('sealed files', () => {
     await writeSealed(path, value)
     const bytes = await readFile(path)
     expect(bytes.subarray(0, 4).toString('latin1')).toBe('TDCP')
-    expect(SEALED_MAGIC.toString('latin1')).toBe('TDCP')
+    expect(Buffer.from(SEALED_MAGIC).toString('latin1')).toBe('TDCP')
     expect(bytes[4]).toBe(SEALED_VERSION)
     expect(bytes.toString('latin1')).not.toContain('printerName')
     expect(bytes.toString('latin1')).not.toContain('GX420t')
@@ -66,9 +66,27 @@ describe('sealed files', () => {
     expect(result.status === 'unreadable' && result.message).toMatch(/^folder\.dat could not be read: /)
   })
 
+  it('reads a file sealed by Node zlib and crypto, as app versions up to 0.1.1 wrote them', async () => {
+    const path = join(await tempFolder(), 'items.dat')
+    const header = Buffer.concat([Buffer.from(SEALED_MAGIC), Buffer.from([SEALED_VERSION])])
+    const payload = gzipSync(Buffer.from(JSON.stringify(value)))
+    const mac = createHmac('sha256', SEALED_FILE_KEY).update(header).update(payload).digest()
+    await writeFile(path, Buffer.concat([header, mac, payload]))
+    expect(await readSealed(path)).toEqual({ status: 'ok', value })
+  })
+
+  it('writes a file Node zlib and crypto can verify and read', async () => {
+    const path = join(await tempFolder(), 'items.dat')
+    await writeSealed(path, value)
+    const bytes = await readFile(path)
+    const payload = bytes.subarray(37)
+    expect(createHmac('sha256', SEALED_FILE_KEY).update(bytes.subarray(0, 5)).update(payload).digest()).toEqual(bytes.subarray(5, 37))
+    expect(JSON.parse(gunzipSync(payload).toString('utf8'))).toEqual(value)
+  })
+
   it('reports a genuine file from a newer app version as unreadable, not changed', async () => {
     const path = join(await tempFolder(), 'items.dat')
-    const header = Buffer.concat([SEALED_MAGIC, Buffer.from([SEALED_VERSION + 1])])
+    const header = Buffer.concat([Buffer.from(SEALED_MAGIC), Buffer.from([SEALED_VERSION + 1])])
     const payload = gzipSync(Buffer.from(JSON.stringify(value)))
     const mac = createHmac('sha256', SEALED_FILE_KEY).update(header).update(payload).digest()
     await writeFile(path, Buffer.concat([header, mac, payload]))
@@ -81,7 +99,7 @@ describe('sealed files', () => {
   it('seals in memory exactly what it writes', async () => {
     const path = join(await tempFolder(), 'settings.dat')
     await writeSealed(path, value)
-    expect(await readFile(path)).toEqual(seal(value))
+    expect(new Uint8Array(await readFile(path))).toEqual(await seal(value))
   })
 })
 

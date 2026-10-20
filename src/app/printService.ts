@@ -18,8 +18,9 @@ import { buildLabelPrintJob, sampleLabelRequest, type LabelPrintJob } from '../r
 import type { PcSettings, PrintSettings } from '../render/printSettings'
 import type { PrinterChoice, PrintOutcome } from '../preload/api'
 
-/** What the printer driver said about a job. */
-export type DriverResult = { ok: true } | { ok: false; reason: string }
+import type { DriverResult } from './host'
+
+export type { DriverResult }
 
 export interface PrintServiceDeps {
   now(): Date

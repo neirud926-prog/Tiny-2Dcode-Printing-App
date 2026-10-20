@@ -3,8 +3,8 @@
  * offsets and log folder, while the rest of the data folder is shared.
  */
 
-import { join } from 'node:path'
 import { normalisePcSettings, type PcSettings } from '../render/printSettings'
+import { platform } from './platform'
 import { readSealed, writeSealed } from './sealed'
 
 /**
@@ -17,11 +17,11 @@ export function pcNameFromHostname(hostname: string): string {
 }
 
 export function pcSettingsPath(dataFolder: string, pcName: string): string {
-  return join(dataFolder, 'pcs', `${pcName}.dat`)
+  return platform().path.join(dataFolder, 'pcs', `${pcName}.dat`)
 }
 
 export function defaultLogFolder(dataFolder: string): string {
-  return join(dataFolder, 'logs')
+  return platform().path.join(dataFolder, 'logs')
 }
 
 /** Where this PC's logs go. */

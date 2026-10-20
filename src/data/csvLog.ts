@@ -3,9 +3,8 @@
  * its own files, so PCs sharing a log folder never write to the same file; each line is a single
  * append, so lines never interleave; a new file gets its header row in the same write as its first line.
  */
-import { appendFile, mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { errorCode } from './atomicWrite'
+import { platform } from './platform'
 
 /** A CSV field, quoted only when it holds a comma, quote, line break or leading/trailing space. */
 export function csvField(value: string): string {
@@ -35,15 +34,16 @@ export function monthlyLogFileName(kind: string, pcName: string, at: Date): stri
  * with `header` as its first row, if needed. Returns the file's path.
  */
 export function appendLogLine(logFolder: string, fileName: string, header: readonly string[], line: string): Promise<string> {
-  const path = join(logFolder, fileName)
+  const { fs, path: paths } = platform()
+  const path = paths.join(logFolder, fileName)
   return queued(path, async () => {
-    await mkdir(logFolder, { recursive: true })
+    await fs.mkdir(logFolder)
     try {
       // A new file gets the header row and the line in one write.
-      await writeFile(path, csvLine(header) + line, { flag: 'wx' })
+      await fs.createFile(path, utf8(csvLine(header) + line))
     } catch (error) {
       if (errorCode(error) !== 'EEXIST') throw error
-      await appendFile(path, line)
+      await fs.appendFile(path, utf8(line))
     }
     return path
   })
@@ -64,6 +64,10 @@ function queued<T>(path: string, task: () => Promise<T>): Promise<T> {
     if (queues.get(path) === settled) queues.delete(path)
   })
   return result
+}
+
+function utf8(text: string): Uint8Array {
+  return new TextEncoder().encode(text)
 }
 
 function pad2(value: number): string {

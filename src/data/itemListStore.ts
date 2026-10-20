@@ -3,8 +3,6 @@
  * file `item_phq.txt` (latin1), parses it, and replaces `items.dat` only if the file is accepted, so a
  * refused file never replaces the Item List in use. Every import is written to the import log.
  */
-import { readFile, stat } from 'node:fs/promises'
-import { basename, join } from 'node:path'
 import { encodeInternalGtin } from '../core/internalGtin'
 import {
   indexItems,
@@ -19,6 +17,8 @@ import {
 } from '../core/itemList'
 import { errorText } from './atomicWrite'
 import { importLogWarning, type ImportLogEntry } from './importLog'
+import { platform } from './platform'
+import { decodeLatin1 } from './reportText'
 import { readSealed, writeSealed } from './sealed'
 import { createSharedFile } from './sharedFile'
 
@@ -51,7 +51,7 @@ export interface LoadedItemList {
 }
 
 export function itemListPath(dataFolder: string): string {
-  return join(dataFolder, ITEM_LIST_FILE_NAME)
+  return platform().path.join(dataFolder, ITEM_LIST_FILE_NAME)
 }
 
 export type LoadItemListResult =
@@ -119,12 +119,12 @@ export async function importItemListFile(
   let modified: Date
   let text: string
   try {
-    const stats = await stat(sourcePath)
+    const stats = await platform().fs.stat(sourcePath)
     if (stats.size > MAX_ITEM_LIST_FILE_BYTES) {
       return notImported('Refused', `The file is too large to be an Item List (${Math.ceil(stats.size / (1024 * 1024))} MB).`)
     }
-    modified = stats.mtime
-    text = await readFile(sourcePath, 'latin1')
+    modified = new Date(stats.mtimeMs)
+    text = decodeLatin1(await platform().fs.readFile(sourcePath))
   } catch (error) {
     return notImported('Failed', `The file could not be read: ${errorText(error)}`)
   }
@@ -133,7 +133,7 @@ export async function importItemListFile(
   if (!parsed.ok) return notImported('Refused', parsed.message, parsed)
 
   const stored: StoredItemList = {
-    sourceFileName: basename(sourcePath),
+    sourceFileName: platform().path.basename(sourcePath),
     sourceModified: modified.toISOString(),
     importedAt: at.toISOString(),
     importedBy: context.windowsUser,

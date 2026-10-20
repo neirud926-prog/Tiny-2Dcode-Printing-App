@@ -3,7 +3,7 @@
  * another PC sharing the data folder replaces it: its size or modified time changes. A damaged or
  * changed file found later is ignored until the next start: the value in use was verified when read.
  */
-import { stat } from 'node:fs/promises'
+import { platform } from './platform'
 
 export interface SharedFile<T, R> {
   /** Reads the file (at startup): the value in use is what it holds, or none if it cannot be used. */
@@ -22,7 +22,7 @@ export function createSharedFile<T, R>(path: string, read: () => Promise<R>, val
 
   async function stampOf(): Promise<string | null> {
     try {
-      const stats = await stat(path)
+      const stats = await platform().fs.stat(path)
       return `${stats.size}:${stats.mtimeMs}`
     } catch {
       return null

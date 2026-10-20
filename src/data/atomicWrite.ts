@@ -4,8 +4,7 @@
  * one. Windows briefly locks a file that another PC is reading, so the rename is retried.
  */
 
-import { randomBytes } from 'node:crypto'
-import { open, rename, unlink } from 'node:fs/promises'
+import { platform, randomHex } from './platform'
 
 /** Waits before each rename retry, in ms; about 1.5 s in all. */
 export const RENAME_RETRY_DELAYS_MS: readonly number[] = [50, 100, 200, 400, 800]
@@ -23,23 +22,15 @@ export interface AtomicWriteDeps {
 }
 
 export const defaultAtomicWriteDeps: AtomicWriteDeps = {
-  async writeTempFile(path, data) {
-    const handle = await open(path, 'wx')
-    try {
-      await handle.writeFile(data)
-      await handle.sync()
-    } finally {
-      await handle.close()
-    }
-  },
-  rename,
-  unlink,
+  writeTempFile: (path, data) => platform().fs.createFile(path, data),
+  rename: (from, to) => platform().fs.rename(from, to),
+  unlink: (path) => platform().fs.unlink(path),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /** Replaces `target` with `data` atomically. The target's folder must exist. */
 export async function writeFileAtomic(target: string, data: Uint8Array, deps: AtomicWriteDeps = defaultAtomicWriteDeps): Promise<void> {
-  const temp = `${target}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`
+  const temp = `${target}.tmp-${randomHex(8)}`
   try {
     await deps.writeTempFile(temp, data)
     for (let attempt = 0; ; attempt++) {

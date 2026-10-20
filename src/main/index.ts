@@ -2,8 +2,13 @@ import { app, BrowserWindow } from 'electron'
 import { hostname, userInfo } from 'node:os'
 import { join } from 'node:path'
 import { resolveDataFolder } from '../data/dataFolder'
+import { nodePlatform } from '../data/nodePlatform'
+import { setPlatform } from '../data/platform'
 import { pcNameFromHostname } from '../data/pcSettings'
 import { registerIpc } from './ipc'
+
+// The data layer runs on Node in the Electron main process.
+setPlatform(nodePlatform)
 
 let mainWindow: BrowserWindow | null = null
 

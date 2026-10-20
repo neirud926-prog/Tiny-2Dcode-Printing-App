@@ -22,11 +22,20 @@ export function decodeReportText(bytes: Uint8Array): string {
   }
 }
 
+/** Bytes as latin1: each byte is the code point of the same number (Node's `latin1`). */
+export function decodeLatin1(bytes: Uint8Array): string {
+  return decodeBytes(bytes, (byte) => byte)
+}
+
 function decodeWindows1252(bytes: Uint8Array): string {
+  return decodeBytes(bytes, (byte) => (byte >= 0x80 && byte <= 0x9f ? WINDOWS_1252_HIGH.charCodeAt(byte - 0x80) : byte))
+}
+
+function decodeBytes(bytes: Uint8Array, codeOf: (byte: number) => number): string {
   let text = ''
   for (let start = 0; start < bytes.length; start += 8192) {
     // Array.from, not Uint8Array.map, which would cut the code points back to bytes.
-    const codes = Array.from(bytes.subarray(start, start + 8192), (byte) => (byte >= 0x80 && byte <= 0x9f ? WINDOWS_1252_HIGH.charCodeAt(byte - 0x80) : byte))
+    const codes = Array.from(bytes.subarray(start, start + 8192), codeOf)
     text += String.fromCharCode(...codes)
   }
   return text

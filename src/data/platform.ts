@@ -36,6 +36,11 @@ export interface Platform {
   readonly path: PlatformPath
 }
 
+/** `bytes` random bytes as hex (Web Crypto, in Node and in webviews alike). */
+export function randomHex(bytes: number): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 let current: Platform | null = null
 
 /** Sets the platform, once at startup, before the data layer is used. */

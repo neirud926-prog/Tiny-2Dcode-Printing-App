@@ -7,8 +7,6 @@
  * Any accepted report replaces the one in use, whatever its Report Date; the Report Date rule
  * (usable for picking only on that day) is applied when Lots are picked.
  */
-import { readFile, stat } from 'node:fs/promises'
-import { basename, join } from 'node:path'
 import { parseIsoDate } from '../core/expiry'
 import { encodeInternalGtin } from '../core/internalGtin'
 import type { BadRow, ItemIndex } from '../core/itemList'
@@ -24,6 +22,7 @@ import {
   type StockOnhandSummary
 } from '../core/stockOnhand'
 import { errorText } from './atomicWrite'
+import { platform } from './platform'
 import { importLogWarning, type ImportLogEntry } from './importLog'
 import { decodeReportText } from './reportText'
 import { readSealed, writeSealed } from './sealed'
@@ -58,7 +57,7 @@ export interface LoadedStockOnhand {
 }
 
 export function stockOnhandPath(dataFolder: string): string {
-  return join(dataFolder, STOCK_ONHAND_FILE_NAME)
+  return platform().path.join(dataFolder, STOCK_ONHAND_FILE_NAME)
 }
 
 export type LoadStockOnhandResult =
@@ -122,12 +121,12 @@ export async function importStockOnhandFile(
   let modified: Date
   let text: string
   try {
-    const stats = await stat(sourcePath)
+    const stats = await platform().fs.stat(sourcePath)
     if (stats.size > MAX_STOCK_ONHAND_FILE_BYTES) {
       return notImported('Refused', `The file is too large to be a Stock Onhand report (${Math.ceil(stats.size / (1024 * 1024))} MB).`)
     }
-    modified = stats.mtime
-    text = decodeReportText(await readFile(sourcePath))
+    modified = new Date(stats.mtimeMs)
+    text = decodeReportText(await platform().fs.readFile(sourcePath))
   } catch (error) {
     return notImported('Failed', `The file could not be read: ${errorText(error)}`)
   }
@@ -136,7 +135,7 @@ export async function importStockOnhandFile(
   if (!parsed.ok) return notImported('Refused', parsed.message, parsed)
 
   const stored: StoredStockOnhand = {
-    sourceFileName: basename(sourcePath),
+    sourceFileName: platform().path.basename(sourcePath),
     sourceModified: modified.toISOString(),
     importedAt: at.toISOString(),
     importedBy: context.windowsUser,

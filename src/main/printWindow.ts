@@ -1,7 +1,7 @@
 import { BrowserWindow } from 'electron'
 import { htmlDataUrl, type LabelPrintJob } from '../render/printJob'
 import { errorText } from '../data/atomicWrite'
-import type { DriverResult } from './printService'
+import type { DriverResult } from '../app/host'
 
 /**
  * Prints a label page silently: loads it in a hidden window that runs no scripts and can go

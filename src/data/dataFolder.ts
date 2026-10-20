@@ -3,10 +3,8 @@
  * the same drive. The main process resolves it once and checks it can write there before anything else.
  */
 
-import { randomBytes } from 'node:crypto'
-import { mkdir, unlink, writeFile } from 'node:fs/promises'
-import path from 'node:path'
 import { errorText } from './atomicWrite'
+import { platform, randomHex, type PlatformPath } from './platform'
 
 export const DATA_FOLDER_NAME = 'LabelData'
 
@@ -21,13 +19,13 @@ export interface AppLocation {
   readonly appPath: string
 }
 
-type PathApi = Pick<typeof path, 'join' | 'dirname'>
+type PathApi = Pick<PlatformPath, 'join' | 'dirname'>
 
 /**
  * `LabelData` beside the portable `.exe`; beside the executable for an unpacked build; in the
  * project folder during development (git-ignored). `pathApi` lets tests use Windows paths.
  */
-export function resolveDataFolder(location: AppLocation, pathApi: PathApi = path): string {
+export function resolveDataFolder(location: AppLocation, pathApi: PathApi = platform().path): string {
   if (location.portableExecutableDir) return pathApi.join(location.portableExecutableDir, DATA_FOLDER_NAME)
   if (location.isPackaged) return pathApi.join(pathApi.dirname(location.exePath), DATA_FOLDER_NAME)
   return pathApi.join(location.appPath, DATA_FOLDER_NAME)
@@ -37,11 +35,12 @@ export type FolderCheckResult = { ok: true } | { ok: false; reason: string }
 
 /** Creates the folder if missing, then writes and deletes a probe file in it. */
 export async function checkFolderWritable(folder: string): Promise<FolderCheckResult> {
-  const probe = path.join(folder, `.write-check-${process.pid}-${randomBytes(4).toString('hex')}`)
+  const { fs, path } = platform()
+  const probe = path.join(folder, `.write-check-${randomHex(6)}`)
   try {
-    await mkdir(folder, { recursive: true })
-    await writeFile(probe, 'write check', { flag: 'wx' })
-    await unlink(probe)
+    await fs.mkdir(folder)
+    await fs.createFile(probe, new TextEncoder().encode('write check'))
+    await fs.unlink(probe)
     return { ok: true }
   } catch (error) {
     return { ok: false, reason: errorText(error) }

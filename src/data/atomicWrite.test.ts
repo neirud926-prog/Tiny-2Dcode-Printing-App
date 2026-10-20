@@ -36,7 +36,7 @@ describe('writeFileAtomic', () => {
     await writeFileAtomic(target, Buffer.from('new'), deps)
     expect(await readFile(target, 'utf8')).toBe('new')
     expect(renames).toHaveLength(1)
-    expect(renames[0]).toMatch(new RegExp(`^${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.tmp-${process.pid}-[0-9a-f]+$`))
+    expect(renames[0]).toMatch(new RegExp(`^${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.tmp-[0-9a-f]{16}$`))
     expect(await readdir(folder)).toEqual(['items.dat'])
   })
 
