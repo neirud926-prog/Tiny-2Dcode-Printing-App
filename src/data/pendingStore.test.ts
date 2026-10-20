@@ -2,6 +2,7 @@ import { utimes, writeFile, readdir } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import { MAX_PENDING_LABELS, type PendingLabel } from '../core/pendingLabel'
 import { addPending, pendingLockPath, pendingPath, readPending, removePending, restorePending, STALE_LOCK_MS, type PendingStoreDeps } from './pendingStore'
+import { writeSealed } from './sealed'
 import { tempFolder } from './testFolder'
 
 const input = { itemCode: 'NEW001', packVolumeDigit: null, expiry: '31122027', lot: 'A1', copies: 2, savedBy: 'chantm', pc: 'PHARM-01' } as const
@@ -110,7 +111,16 @@ describe('Pending Labels store', () => {
 
   it('keeps a limited number', async () => {
     const folder = await tempFolder()
-    for (let index = 0; index < MAX_PENDING_LABELS; index++) await addPending(folder, input, deps())
+    // One short of the limit in a single write: 199 saves one by one take seconds.
+    const almostFull: PendingLabel[] = Array.from({ length: MAX_PENDING_LABELS - 1 }, (_, index) => ({
+      ...input,
+      id: `id-${index}`,
+      savedAt: new Date(2026, 9, 19).toISOString()
+    }))
+    await writeSealed(pendingPath(folder), almostFull)
+    expect((await addPending(folder, input, deps())).ok).toBe(true)
     expect(await addPending(folder, input, deps())).toEqual({ ok: false, message: expect.stringContaining(String(MAX_PENDING_LABELS)) })
+    const listed = await readPending(folder)
+    expect(listed.ok && listed.labels).toHaveLength(MAX_PENDING_LABELS)
   })
 })
