@@ -37,7 +37,7 @@ To test the release job without publishing anything, run the CI workflow by hand
 
 ## Deploying on the shared drive
 
-1. Download one of the two builds from [Releases](https://github.com/neirud926-prog/Tiny-2Dcode-Printing-App/releases). Each is the whole app: no installer, no admin rights. Both read and write the same `LabelData\` folder, so PCs can use either.
+1. Download one of the two builds from [Releases](https://github.com/neirud926-prog/Tiny-2Dcode-Printing-App/releases). Each is the whole app: no installer, no admin rights. Each uses the `LabelData\` folder beside its own `.exe`, so put both in the same shared folder if some PCs use one and some the other; the data is the same format. Do not run both at once on one PC: each keeps this PC's printer settings from when it started, so a change saved in one is not seen by the other until it restarts.
    - `2DCodePrint-<version>-tauri.exe` (a few MB): starts fast; uses the Microsoft Edge WebView2 Runtime that Windows 11 and up-to-date Windows 10 already have. A PC without it cannot run this build.
    - `2DCodePrint-<version>-portable.exe` (about 100 MB): brings its own browser engine, so it runs on any Windows 10/11 PC; it unpacks itself at every start (see below).
 2. Copy it to a folder on the pharmacy shared drive that every staff member using the app can write to, e.g. `S:\Pharmacy\Label App\`. Every PC runs that same file. To upgrade, close the app on every PC, replace the `.exe` with the new one and keep `LabelData\`. The header shows the running version, e.g. `v0.1.0`.

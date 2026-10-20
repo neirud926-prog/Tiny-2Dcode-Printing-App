@@ -8,11 +8,12 @@ pub struct PrinterChoice {
     pub display_name: String,
 }
 
-/// `LabelPrintJob` from `src/render/printJob.ts`; the options' Electron-only fields are ignored.
+/// `LabelPrintJob` from `src/render/printJob.ts`, with its page as the `data:` URL `htmlDataUrl`
+/// makes (`src/tauri/host.ts`); the options' Electron-only fields are ignored.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabelPrintJob {
-    pub html: String,
+    pub url: String,
     pub options: LabelPrintOptions,
 }
 
@@ -95,29 +96,35 @@ pub fn list_printers() -> Result<Vec<PrinterChoice>, String> {
 /// nowhere, prints it through WebView2 with the job's options, then closes the window.
 #[cfg(windows)]
 pub async fn print_label(app: tauri::AppHandle, job: LabelPrintJob) -> Result<(), String> {
-    const PRINT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+    const LOAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
     use std::sync::atomic::{AtomicU32, Ordering};
     use tauri::{async_runtime::channel, webview::PageLoadEvent, WebviewUrl, WebviewWindowBuilder};
 
     static NEXT_WINDOW: AtomicU32 = AtomicU32::new(0);
 
     let copies = i32::try_from(job.options.copies).map_err(|_| "too many copies".to_string())?;
-    let url = html_data_url(&job.html)
+    let url: tauri::Url = job
+        .url
         .parse()
         .map_err(|error| format!("the label page is not a valid URL: {error}"))?;
+    if url.scheme() != "data" {
+        return Err("the label page must be a data: URL".into());
+    }
     let label = format!(
         "label-print-{}",
         NEXT_WINDOW.fetch_add(1, Ordering::Relaxed)
     );
     let (loaded_tx, mut loaded) = channel::<Result<(), String>>(1);
     let (done_tx, mut done) = channel::<Result<(), String>>(1);
-    // A driver or page that never answers must not hang Print: give up after a minute.
-    let (load_timeout, print_timeout) = (loaded_tx.clone(), done_tx.clone());
+    // A page that never loads must not hang Print; nothing has printed yet then. Once the print has
+    // started there is no limit, as in the Electron app: giving up could not stop a spooled label.
+    let load_timeout = loaded_tx.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(PRINT_TIMEOUT);
-        let message = format!("no answer within {} seconds", PRINT_TIMEOUT.as_secs());
-        let _ = load_timeout.try_send(Err(format!("the label page gave {message}")));
-        let _ = print_timeout.try_send(Err(format!("the printer gave {message}")));
+        std::thread::sleep(LOAD_TIMEOUT);
+        let seconds = LOAD_TIMEOUT.as_secs();
+        let _ = load_timeout.try_send(Err(format!(
+            "the label page did not load within {seconds} seconds"
+        )));
     });
     let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::External(url))
         .visible(false)
@@ -226,20 +233,6 @@ fn inches(microns: u32) -> f64 {
     f64::from(microns) / 25_400.0
 }
 
-/// The page as a `data:` URL, encoded like `htmlDataUrl` in `printJob.ts` (encodeURIComponent).
-#[cfg_attr(not(windows), allow(dead_code))]
-fn html_data_url(html: &str) -> String {
-    let mut url = String::from("data:text/html;charset=utf-8,");
-    for &byte in html.as_bytes() {
-        if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
-            url.push(byte as char);
-        } else {
-            url.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    url
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,12 +240,12 @@ mod tests {
     #[test]
     fn reads_the_print_job_from_the_web_side() {
         let job: LabelPrintJob = serde_json::from_str(
-            r#"{"html":"<p>x</p>","options":{"silent":true,"deviceName":"Zebra ZD421","printBackground":true,
+            r#"{"html":"<p>x</p>","url":"data:text/html;charset=utf-8,%3Cp%3Ex%3C%2Fp%3E","options":{"silent":true,"deviceName":"Zebra ZD421","printBackground":true,
             "margins":{"marginType":"none"},"landscape":false,"pageSize":{"width":34400,"height":25000},
             "copies":3,"scaleFactor":100}}"#,
         )
         .unwrap();
-        assert_eq!(job.html, "<p>x</p>");
+        assert_eq!(job.url, "data:text/html;charset=utf-8,%3Cp%3Ex%3C%2Fp%3E");
         assert_eq!(job.options.device_name, "Zebra ZD421");
         assert_eq!(
             (job.options.page_size.width, job.options.page_size.height),
@@ -282,14 +275,6 @@ mod tests {
         assert_eq!(
             print_outcome(0x8000_4004_u32 as i32, 0),
             Err("the print failed (HRESULT 0x80004004)".into())
-        );
-    }
-
-    #[test]
-    fn data_url_matches_encode_uri_component() {
-        assert_eq!(
-            html_data_url("<a b='c'>#é%</a>"),
-            "data:text/html;charset=utf-8,%3Ca%20b%3D'c'%3E%23%C3%A9%25%3C%2Fa%3E"
         );
     }
 }

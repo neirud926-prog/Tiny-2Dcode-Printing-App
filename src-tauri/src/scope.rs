@@ -35,8 +35,8 @@ impl Scope {
         self.chosen_folders.extend(parts(path));
     }
 
-    /// Inside the data folder or a chosen folder; or, in any folder, a log file or the write probe
-    /// (so a log folder saved in an earlier session keeps working).
+    /// Inside the data folder or a folder chosen this session: any change (create, append, rename,
+    /// delete, make a folder).
     pub fn may_write(&self, path: &str) -> bool {
         let Some(p) = parts(path) else { return false };
         let inside = |folder: &Parts| p.len() >= folder.len() && p[..folder.len()] == folder[..];
@@ -44,10 +44,20 @@ impl Scope {
             .iter()
             .chain(&self.chosen_folders)
             .any(inside)
-            || is_log_or_probe(file_name(path))
     }
 
-    /// Anything writable, and the files chosen in the open dialog.
+    /// May create or append to `path`: writable, or, in any folder, a log file or the write probe
+    /// (so a log folder saved in an earlier session keeps working). Nothing else outside.
+    pub fn may_add(&self, path: &str) -> bool {
+        self.may_write(path) || (parts(path).is_some() && is_log_or_probe(file_name(path)))
+    }
+
+    /// May delete `path`: writable, or the write probe the app just made in any folder.
+    pub fn may_unlink(&self, path: &str) -> bool {
+        self.may_write(path) || (parts(path).is_some() && is_probe(file_name(path)))
+    }
+
+    /// Writable, or a file chosen in the open dialog.
     pub fn may_read(&self, path: &str) -> bool {
         self.may_write(path) || parts(path).is_some_and(|p| self.chosen_files.contains(&p))
     }
@@ -84,11 +94,17 @@ fn file_name(path: &str) -> &str {
     path.rsplit(['\\', '/']).next().unwrap_or("")
 }
 
-/// `print-log-YYYY-MM-<PC>.csv`, `import-log-YYYY-MM-<PC>.csv` or `.write-check-<id>`.
+/// `.write-check-<id>`, the probe that checks a folder can be written.
+fn is_probe(name: &str) -> bool {
+    name.strip_prefix(".write-check-").is_some_and(|id| {
+        (1..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    })
+}
+
+/// `print-log-YYYY-MM-<PC>.csv`, `import-log-YYYY-MM-<PC>.csv` or the write probe.
 fn is_log_or_probe(name: &str) -> bool {
-    if let Some(id) = name.strip_prefix(".write-check-") {
-        return (1..=64).contains(&id.len())
-            && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    if is_probe(name) {
+        return true;
     }
     let Some(rest) = name
         .strip_prefix("print-log-")
@@ -204,20 +220,31 @@ mod tests {
     }
 
     #[test]
-    fn log_files_and_the_write_probe_are_writable_in_any_folder() {
+    fn log_files_and_the_write_probe_can_be_added_in_any_folder() {
         let s = scope();
-        assert!(s.may_write(r"D:\Old Logs\print-log-2026-10-PHARM-01.csv"));
-        assert!(s.may_write(r"D:\Old Logs\import-log-2026-01-UNKNOWN-PC.csv"));
-        assert!(s.may_write(r"D:\Old Logs\.write-check-0a1b2c3d4e5f"));
-        assert!(s.may_read(r"D:\Old Logs\print-log-2026-10-PHARM_01.csv"));
-        assert!(!s.may_write(r"D:\Old Logs\print-log-2026-10-.csv"));
-        assert!(!s.may_write(r"D:\Old Logs\print-log-2026-10-pharm.csv"));
-        assert!(!s.may_write(r"D:\Old Logs\print-log-26-10-PHARM.csv"));
-        assert!(!s.may_write(r"D:\Old Logs\print-log-2026-10-PHARM.csv.exe"));
-        assert!(!s.may_write(r"D:\Old Logs\print-log-2026-10-PHARM.csv:stream"));
-        assert!(!s.may_write(r"D:\Old Logs\.write-check-"));
-        assert!(!s.may_write(r"D:\Old Logs\..\print-log-2026-10-PHARM.csv"));
-        assert!(!s.may_write(r"D:\Old Logs\other.csv"));
+        assert!(s.may_add(r"D:\Old Logs\print-log-2026-10-PHARM-01.csv"));
+        assert!(s.may_add(r"D:\Old Logs\import-log-2026-01-UNKNOWN-PC.csv"));
+        assert!(s.may_add(r"D:\Old Logs\.write-check-0a1b2c3d4e5f"));
+        assert!(!s.may_add(r"D:\Old Logs\print-log-2026-10-.csv"));
+        assert!(!s.may_add(r"D:\Old Logs\print-log-2026-10-pharm.csv"));
+        assert!(!s.may_add(r"D:\Old Logs\print-log-26-10-PHARM.csv"));
+        assert!(!s.may_add(r"D:\Old Logs\print-log-2026-10-PHARM.csv.exe"));
+        assert!(!s.may_add(r"D:\Old Logs\print-log-2026-10-PHARM.csv:stream"));
+        assert!(!s.may_add(r"D:\Old Logs\.write-check-"));
+        assert!(!s.may_add(r"D:\Old Logs\..\print-log-2026-10-PHARM.csv"));
+        assert!(!s.may_add(r"D:\Old Logs\other.csv"));
+        assert!(!s.may_add(r"print-log-2026-10-PHARM.csv"));
+    }
+
+    #[test]
+    fn outside_folders_a_log_can_be_neither_read_renamed_nor_deleted() {
+        let s = scope();
+        let log = r"D:\Old Logs\print-log-2026-10-PHARM-01.csv";
+        assert!(!s.may_write(log)); // rename and make-folder use may_write
+        assert!(!s.may_unlink(log));
+        assert!(!s.may_read(log));
+        assert!(s.may_unlink(r"D:\Old Logs\.write-check-0a1b2c3d4e5f"));
+        assert!(!s.may_unlink(r"D:\Old Logs\other.csv"));
     }
 
     #[test]

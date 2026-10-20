@@ -9,7 +9,9 @@
     "src/preload/**/*",
     "src/data/**/*",
     "src/core/**/*",
-    "src/render/**/*"
+    "src/render/**/*",
+    "src/app/**/*",
+    "src/tauri/**/*.test.ts"
   ],
   "compilerOptions": {
     "composite": true,

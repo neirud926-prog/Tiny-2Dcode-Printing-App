@@ -2,10 +2,11 @@ name: CI
 
 # Every push and pull request: tests, then both Windows builds as workflow artifacts (14 days): the
 # Electron portable .exe and the small Tauri .exe (WebView2). A pushed `v*` tag matching package.json
-# "version" (e.g. v0.1.0) also publishes a GitHub Release with both. Running the workflow by hand on main with "Publish release" does the same without pushing a
-# tag: the release job creates tag v<version> on the commit it built. To test the release job without
-# publishing, run it by hand with "Release dry run": it creates a draft release (never public), checks the
-# .exe is attached, then deletes it.
+# "version" (e.g. v0.1.0) also publishes a GitHub Release with both. Running the workflow by hand on
+# main with "Publish release" does the same without pushing a tag: the release job creates tag
+# v<version> on the commit it built. To test the release job without publishing, run it by hand with
+# "Release dry run": it creates a draft release (never public), checks both .exe files are attached,
+# then deletes it.
 on:
   push:
   pull_request:

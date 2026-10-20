@@ -1,4 +1,4 @@
-//! 2D Code Print on WebView2. The app logic runs in the webview (`src/tauri/main.tsx`); Rust gives it
+//! 2D Code Print on WebView2. The app logic runs in the webview (`src/tauri/main.ts`); Rust gives it
 //! only primitives: file operations limited by `scope.rs`, the open/folder dialog, who and where this
 //! PC is, and printing (`printing.rs`).
 
@@ -60,7 +60,7 @@ async fn read_file(files: State<'_, Files>, path: String) -> FsResult<Response> 
 /// Creates `path` (EEXIST if it exists), writes `data` and flushes it to disk.
 #[tauri::command]
 async fn create_file(files: State<'_, Files>, path: String, data: Vec<u8>) -> FsResult<()> {
-    allowed(files.scope.lock().unwrap().may_write(&path), "open", &path)?;
+    allowed(files.scope.lock().unwrap().may_add(&path), "open", &path)?;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -73,7 +73,7 @@ async fn create_file(files: State<'_, Files>, path: String, data: Vec<u8>) -> Fs
 
 #[tauri::command]
 async fn append_file(files: State<'_, Files>, path: String, data: Vec<u8>) -> FsResult<()> {
-    allowed(files.scope.lock().unwrap().may_write(&path), "open", &path)?;
+    allowed(files.scope.lock().unwrap().may_add(&path), "open", &path)?;
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)
@@ -96,23 +96,30 @@ async fn rename(files: State<'_, Files>, from: String, to: String) -> FsResult<(
 #[tauri::command]
 async fn unlink(files: State<'_, Files>, path: String) -> FsResult<()> {
     allowed(
-        files.scope.lock().unwrap().may_write(&path),
+        files.scope.lock().unwrap().may_unlink(&path),
         "unlink",
         &path,
     )?;
     fs::remove_file(&path).map_err(|e| failed(e, "unlink", &path))
 }
 
-/// Creates the folder and missing parents. An existing folder is fine anywhere, so a log folder
-/// saved in an earlier session still passes; creating one needs a writable place.
+/// Creates the folder and missing parents. Outside the writable places an existing folder is fine,
+/// so a log folder saved in an earlier session still passes; one that is gone must be chosen again
+/// in Settings (the Electron app would recreate it), and one that cannot be reached says why.
 #[tauri::command]
 async fn mkdir_all(files: State<'_, Files>, path: String) -> FsResult<()> {
-    let may_write = files.scope.lock().unwrap().may_write(&path);
-    if !may_write && Path::new(&path).is_dir() {
-        return Ok(());
+    if files.scope.lock().unwrap().may_write(&path) {
+        return fs::create_dir_all(&path).map_err(|e| failed(e, "mkdir", &path));
     }
-    allowed(may_write, "mkdir", &path)?;
-    fs::create_dir_all(&path).map_err(|e| failed(e, "mkdir", &path))
+    match fs::metadata(&path) {
+        Ok(meta) if meta.is_dir() => Ok(()),
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(failed(e, "mkdir", &path)),
+        Ok(_) => allowed(false, "mkdir", &path),
+        Err(_) => Err(FsError {
+            code: "ENOENT",
+            message: format!("ENOENT: the folder no longer exists; choose the log folder again in Settings, mkdir '{path}'"),
+        }),
+    }
 }
 
 #[derive(serde::Serialize)]

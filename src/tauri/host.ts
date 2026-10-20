@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { AppHost } from '../app/host'
 import { pcNameFromHostname } from '../data/pcSettings'
 import type { PrinterChoice } from '../preload/api'
+import { htmlDataUrl } from '../render/printJob'
 
 /** `startup_info` in `src-tauri/src/main.rs`. */
 interface StartupInfo {
@@ -21,7 +22,8 @@ export async function createTauriHost(): Promise<AppHost> {
     listPrinters: () => invoke<PrinterChoice[]>('list_printers'),
     async sendToPrinter(job) {
       try {
-        await invoke('print_label', { job })
+        // Rust loads the page as this data: URL, encoded once, here, as for the Electron app.
+        await invoke('print_label', { job: { ...job, url: htmlDataUrl(job.html) } })
         return { ok: true }
       } catch (error) {
         return { ok: false, reason: String(error) }
