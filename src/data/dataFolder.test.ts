@@ -12,7 +12,7 @@ describe('resolveDataFolder', () => {
         {
           portableExecutableDir: 'S:\\Pharmacy\\Label App',
           isPackaged: true,
-          exePath: 'C:\\Users\\nurse\\AppData\\Local\\Temp\\2abc\\Tiny 2D-code Printing App.exe',
+          exePath: 'C:\\Users\\nurse\\AppData\\Local\\Temp\\2abc\\2D Code Print.exe',
           appPath: 'C:\\Users\\nurse\\AppData\\Local\\Temp\\2abc\\resources\\app.asar'
         },
         win32
@@ -26,7 +26,7 @@ describe('resolveDataFolder', () => {
     const unpacked = 'C:\\Users\\nurse\\AppData\\Local\\Temp\\2xYz9'
     for (const portableExecutableDir of ['S:\\Pharmacy\\Label App', 'S:\\Pharmacy\\Label App\\']) {
       const folder = resolveDataFolder(
-        { portableExecutableDir, isPackaged: true, exePath: `${unpacked}\\Tiny 2D-code Printing App.exe`, appPath: `${unpacked}\\resources\\app.asar` },
+        { portableExecutableDir, isPackaged: true, exePath: `${unpacked}\\2D Code Print.exe`, appPath: `${unpacked}\\resources\\app.asar` },
         win32
       )
       expect(folder).toBe('S:\\Pharmacy\\Label App\\LabelData')

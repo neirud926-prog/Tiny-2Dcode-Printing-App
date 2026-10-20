@@ -1,4 +1,4 @@
-# Tiny 2D-code Printing App
+# 2D Code Print
 
 Portable Electron app that generates GS1 DataMatrix codes (AIs 01 / 17 / 10) for the BCS replenishment project.
 

@@ -59,7 +59,7 @@ jobs:
           version=$(node -p "require('./package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
           # Must match portable.artifactName in electron-builder.yml.
-          echo "exe=Tiny2DCode-$version-portable.exe" >> "$GITHUB_OUTPUT"
+          echo "exe=2DCodePrint-$version-portable.exe" >> "$GITHUB_OUTPUT"
       - name: Build the portable .exe
         run: npm run dist:win
       - name: Check one portable .exe was built
@@ -106,7 +106,7 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $VERSION. Push tag v$VERSION, or change the version first."
             exit 1
           fi
-          gh release create "$GITHUB_REF_NAME" "$EXE" --verify-tag --generate-notes --title "Tiny 2D-code Printing App $GITHUB_REF_NAME"
+          gh release create "$GITHUB_REF_NAME" "$EXE" --verify-tag --generate-notes --title "2D Code Print $GITHUB_REF_NAME"
       - name: Publish the release from a manual run (creates the tag)
         if: github.event_name == 'workflow_dispatch' && inputs.publish-release && !inputs.release-dry-run
         run: |
@@ -114,7 +114,7 @@ jobs:
             echo "::error::Publish release only from main (this run is on $GITHUB_REF)."
             exit 1
           fi
-          gh release create "v$VERSION" "$EXE" --target "$GITHUB_SHA" --generate-notes --title "Tiny 2D-code Printing App v$VERSION"
+          gh release create "v$VERSION" "$EXE" --target "$GITHUB_SHA" --generate-notes --title "2D Code Print v$VERSION"
       - name: Dry run (draft release, deleted again)
         if: github.event_name == 'workflow_dispatch' && inputs.release-dry-run
         run: |

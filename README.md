@@ -1,4 +1,4 @@
-# Tiny 2D-code Printing App
+# 2D Code Print
 
 Portable Windows app that prints GS1 DataMatrix labels carrying an Internal GTIN, Expiry and Lot, so BCS can scan NLTH Pharmacy packs that have no manufacturer DataMatrix. See [GLOSSARY.md](GLOSSARY.md) and [docs/adr/](docs/adr/).
 
@@ -26,12 +26,12 @@ To test the release job without publishing anything, run the CI workflow by hand
 
 ## Deploying on the shared drive
 
-1. Download `Tiny2DCode-<version>-portable.exe` from [Releases](https://github.com/neirud926-prog/Tiny-2Dcode-Printing-App/releases). It is the whole app: no installer, no admin rights.
+1. Download `2DCodePrint-<version>-portable.exe` from [Releases](https://github.com/neirud926-prog/Tiny-2Dcode-Printing-App/releases). It is the whole app: no installer, no admin rights.
 2. Copy it to a folder on the pharmacy shared drive that every staff member using the app can write to, e.g. `S:\Pharmacy\Label App\`. Every PC runs that same file. To upgrade, close the app on every PC, replace the `.exe` with the new one and keep `LabelData\`. The header shows the running version, e.g. `v0.1.0`.
 3. First launch: Setup asks for the Item List import (shared by every PC), then for this PC's printer and label size with a test print. Every other PC asks only for its own printer and test print. Later launches open straight to the label screen. Whenever there is no Stock Onhand dated today, a launch first asks to **Import** today's Stock Onhand report (shared by every PC) or **Skip** (type Lots by hand until the next launch).
 
 - **`LabelData\` is created next to the `.exe`** (see [Data folder](#data-folder)). It holds the shared data and each PC's settings as sealed `.dat` files: do not edit, rename or move them, since a file changed outside the app is refused. Print and import logs are CSV files in `LabelData\logs\` unless the log folder was changed under **Settings**. If the app cannot write there, it says so at startup: move the `.exe` to a folder you can write to.
-- **Startup takes a few seconds.** The portable `.exe` unpacks the app into the PC's temp folder (`%TEMP%`) at every launch, runs it from there and deletes it on exit; from a network share this can take several seconds before the window appears, so double-click once and wait. The data still goes next to the `.exe`, never into the temp folder: the launcher passes the `.exe`'s folder to the app (`PORTABLE_EXECUTABLE_DIR`). If startup is too slow, use the unpacked folder build instead: run `npm ci` and `npm run dist:win:dir` in this repo, copy the whole `release/win-unpacked/` folder to the shared drive and start `Tiny 2D-code Printing App.exe` inside it. It starts without unpacking and keeps `LabelData\` inside that folder, next to its `.exe` (move an existing `LabelData\` there).
+- **Startup takes a few seconds.** The portable `.exe` unpacks the app into the PC's temp folder (`%TEMP%`) at every launch, runs it from there and deletes it on exit; from a network share this can take several seconds before the window appears, so double-click once and wait. The data still goes next to the `.exe`, never into the temp folder: the launcher passes the `.exe`'s folder to the app (`PORTABLE_EXECUTABLE_DIR`). If startup is too slow, use the unpacked folder build instead: run `npm ci` and `npm run dist:win:dir` in this repo, copy the whole `release/win-unpacked/` folder to the shared drive and start `2D Code Print.exe` inside it. It starts without unpacking and keeps `LabelData\` inside that folder, next to its `.exe` (move an existing `LabelData\` there).
 - **Windows SmartScreen may warn.** The `.exe` is not code-signed, so Windows may show "Windows protected your PC" on first run or when it is downloaded: choose **More info → Run anyway**, or unblock it under the file's **Properties**, or ask IT to allow it.
 - **Offline.** The app makes no network calls: no auto-update, no telemetry, no remote content. Updates are manual, from Releases.
 

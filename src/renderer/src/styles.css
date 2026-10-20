@@ -49,6 +49,17 @@ p {
   font-weight: 600;
 }
 
+.app-header__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: center;
+}
+
+.app-logo {
+  flex: none;
+}
+
 .app-header__note {
   color: var(--muted);
   font-size: 13px;

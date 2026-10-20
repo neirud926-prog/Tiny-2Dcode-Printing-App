@@ -1,4 +1,4 @@
-# Tiny 2D-code Printing App
+# 2D Code Print
 
 Prints GS1 DataMatrix labels for the few NLTH Pharmacy items that have no Manufacturer GTIN (unregistered items, clinical-trial drugs), so BCS (Bar-Code Stock Replenishment) can scan them like manufacturer stock.
 

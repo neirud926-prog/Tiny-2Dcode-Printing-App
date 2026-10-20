@@ -1,6 +1,6 @@
 {
   "name": "tiny-2dcode-printing-app",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Portable Windows app that prints GS1 DataMatrix labels carrying an Internal GTIN, Expiry and Lot.",
   "main": "./out/main/index.js",
