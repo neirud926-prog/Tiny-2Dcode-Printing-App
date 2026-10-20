@@ -2,8 +2,10 @@ name: CI
 
 # Every push and pull request: tests, then the portable Windows .exe as a workflow artifact (14 days).
 # A pushed `v*` tag matching package.json "version" (e.g. v0.1.0) also publishes a GitHub Release with
-# that .exe. To test the release job without publishing, run the workflow by hand with
-# "Release dry run": it creates a draft release (never public), checks the .exe is attached, then deletes it.
+# that .exe. Running the workflow by hand on main with "Publish release" does the same without pushing a
+# tag: the release job creates tag v<version> on the commit it built. To test the release job without
+# publishing, run it by hand with "Release dry run": it creates a draft release (never public), checks the
+# .exe is attached, then deletes it.
 on:
   push:
   pull_request:
@@ -11,6 +13,10 @@ on:
     inputs:
       release-dry-run:
         description: Release dry run (draft release, deleted again)
+        type: boolean
+        default: false
+      publish-release:
+        description: Publish release v<package.json version> from this commit (creates the tag)
         type: boolean
         default: false
 
@@ -77,7 +83,7 @@ jobs:
     needs: windows
     if: >-
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.release-dry-run)
+      (github.event_name == 'workflow_dispatch' && (inputs.release-dry-run || inputs.publish-release))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -101,8 +107,16 @@ jobs:
             exit 1
           fi
           gh release create "$GITHUB_REF_NAME" "$EXE" --verify-tag --generate-notes --title "Tiny 2D-code Printing App $GITHUB_REF_NAME"
+      - name: Publish the release from a manual run (creates the tag)
+        if: github.event_name == 'workflow_dispatch' && inputs.publish-release && !inputs.release-dry-run
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Publish release only from main (this run is on $GITHUB_REF)."
+            exit 1
+          fi
+          gh release create "v$VERSION" "$EXE" --target "$GITHUB_SHA" --generate-notes --title "Tiny 2D-code Printing App v$VERSION"
       - name: Dry run (draft release, deleted again)
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.release-dry-run
         run: |
           tag="v$VERSION-dry-run.$GITHUB_RUN_ID"
           trap 'gh release delete "$tag" --yes || true' EXIT
