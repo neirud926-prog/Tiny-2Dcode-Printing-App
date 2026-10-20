@@ -4,8 +4,8 @@
  * estimated from font metrics, so the same layout is produced in the renderer and in Node tests.
  *
  *   ┌──────────────────────────────────┐
- *   │ ▛▀▀▀▜  PARA18 60 mL              │   Item Code bold 10 pt, Pack Volume bold 8 pt
- *   │ ▌ DM ▐  EXP 31 DEC 2027          │   6.5 pt, "EXP" bold
+ *   │ ▛▀▀▀▜  PARA18 60 mL              │   Item Code and Pack Volume bold 6.5 pt, as the Lot
+ *   │ ▌ DM ▐  EXP 31 DEC 2027          │   6.5 pt, "EXP" bold; the symbol is 1 cm square
  *   │ ▙▄▄▄▟  LOT 2512172-1             │   6.5 pt, "LOT" bold; past 15 characters the Lot
  *   └──────────────────────────────────┘   moves to its own full-width line under this row
  */
@@ -28,13 +28,11 @@ export const SYMBOL_TEXT_GAP_MM = 1.2
 export const LOT_OWN_LINE_AFTER = 15
 export const FONT_FAMILY = 'Arial, Helvetica, sans-serif'
 
-const ITEM_CODE_PT = 10
-const PACK_VOLUME_PT = 8
 const DETAIL_PT = 6.5
+const ITEM_CODE_PT = DETAIL_PT
+const PACK_VOLUME_PT = DETAIL_PT
 const PACK_VOLUME_GAP_MM = 0.7
-/** From the Item Code baseline to the top of the EXP line's capitals. */
-const ITEM_CODE_TO_DETAIL_GAP_MM = 1.0
-/** Baseline to baseline between the EXP and LOT lines. */
+/** Baseline to baseline between the Item Code, EXP and LOT lines. */
 const DETAIL_LINE_PITCH_MM = DETAIL_PT * MM_PER_PT * 1.25
 /** From the bottom of the symbol row to the top of a Lot on its own line (well over one module of quiet zone). */
 const OWN_LINE_GAP_MM = 1.0
@@ -90,7 +88,7 @@ export function layoutLabel(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE):
 
   // Text block beside the symbol, as offsets from its top.
   const itemCodeBaseline = capHeightMm(ITEM_CODE_PT)
-  const expiryBaseline = itemCodeBaseline + ITEM_CODE_TO_DETAIL_GAP_MM + capHeightMm(DETAIL_PT)
+  const expiryBaseline = itemCodeBaseline + DETAIL_LINE_PITCH_MM
   const sideLotBaseline = expiryBaseline + DETAIL_LINE_PITCH_MM
   const blockHeight = (lotOnOwnLine ? expiryBaseline : sideLotBaseline) + descentMm(DETAIL_PT)
 
@@ -98,7 +96,7 @@ export function layoutLabel(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE):
   const ownLineHeight = lotOnOwnLine ? OWN_LINE_GAP_MM + capHeightMm(DETAIL_PT) + descentMm(DETAIL_PT) : 0
   const contentHeight = rowHeight + ownLineHeight
 
-  // The symbol sits on whole printer dots, so its modules print exactly 3 dots each.
+  // The symbol sits on whole printer dots, so its modules print exactly 4 dots each.
   const contentTop = snapToDot((size.heightMm - contentHeight) / 2)
   const symbolX = snapToDot(SIDE_PADDING_MM)
   const symbolY = contentTop + floorToDot((rowHeight - dataMatrix.heightMm) / 2)

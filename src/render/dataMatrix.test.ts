@@ -18,10 +18,22 @@ function labelFor(overrides: Partial<LabelRequest>) {
 }
 
 describe('module size', () => {
-  it('is exactly 3 printer dots at 203 dpi', () => {
+  it('is exactly 4 printer dots at 203 dpi', () => {
     expect(DOT_MM).toBeCloseTo(25.4 / 203, 12)
-    expect(MODULE_MM).toBeCloseTo((3 * 25.4) / 203, 12)
-    expect(MODULE_MM).toBeCloseTo(0.3754, 4)
+    expect(MODULE_MM).toBeCloseTo((4 * 25.4) / 203, 12)
+    expect(MODULE_MM).toBeCloseTo(0.5005, 4)
+  })
+
+  it('is 1 cm square for a typical label', () => {
+    const symbol = renderDataMatrix(labelFor({}))
+    expect(symbol.widthMm).toBeCloseTo(10, 1)
+    expect(symbol.heightMm).toBeCloseTo(10, 1)
+  })
+
+  it('is never smaller than 20 × 20 modules (1 cm), even for a short Lot', () => {
+    const symbol = renderDataMatrix(labelFor({ lot: 'A1' }))
+    expect(symbol.columns).toBe(20)
+    expect(symbol.widthMm).toBeCloseTo(10, 1)
   })
 
   it('sizes the symbol as modules × module size', () => {
@@ -32,11 +44,11 @@ describe('module size', () => {
     expect(symbol.heightMm).toBeCloseTo(20 * MODULE_MM, 12)
   })
 
-  it('stays at 22 × 22 modules (≈ 8.3 mm) for a 20-character Lot', () => {
+  it('grows to 22 × 22 modules (≈ 11 mm) only for a Lot too long for 1 cm, up to 20 characters', () => {
     for (const lot of ['ABCDEFGHIJ0123456789', '99999999999999999999', 'WWWWWWWWWWWWWWWWWWWW', '(((((((((())))))))))']) {
       const symbol = renderDataMatrix(labelFor({ lot }))
       expect(symbol.columns).toBe(22)
-      expect(symbol.widthMm).toBeLessThan(8.3)
+      expect(symbol.widthMm).toBeLessThan(11.1)
     }
   })
 

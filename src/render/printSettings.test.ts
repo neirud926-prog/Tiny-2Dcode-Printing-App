@@ -60,7 +60,7 @@ describe('normalisePcSettings', () => {
     expect(normalisePcSettings(valid)).toEqual({ ok: true, settings: valid })
   })
 
-  it('snaps offsets to whole printer dots, so modules stay exactly 3 dots', () => {
+  it('snaps offsets to whole printer dots, so modules stay exactly 4 dots', () => {
     const result = normalisePcSettings({ ...valid, offsetXmm: 0.3, offsetYmm: -0.5 })
     if (!result.ok) throw new Error(JSON.stringify(result.errors))
     expect(result.settings.offsetXmm).toBeCloseTo(2 * DOT_MM, 12)

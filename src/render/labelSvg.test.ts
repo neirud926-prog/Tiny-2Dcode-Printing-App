@@ -38,7 +38,7 @@ describe('layoutLabel', () => {
     expect(layoutLabel(labelFor()).size).toEqual(DEFAULT_LABEL_SIZE)
   })
 
-  it('puts the symbol on the left, 1.5 mm in, on the printer dot grid, 3 dots per module', () => {
+  it('puts the symbol on the left, 1.5 mm in, on the printer dot grid, 4 dots per module', () => {
     const { symbol } = layoutLabel(labelFor())
     expect(SIDE_PADDING_MM).toBe(1.5)
     expect(symbol.xMm).toBeCloseTo(1.5, 1)
@@ -56,11 +56,11 @@ describe('layoutLabel', () => {
     expect(layout.expiryLine.baselineMm).toBeLessThan(layout.lotLine.baselineMm)
   })
 
-  it('sets Item Code bold 10 pt, Pack Volume bold 8 pt beside it, EXP and LOT 6.5 pt with bold labels', () => {
+  it('sets Item Code and Pack Volume bold 6.5 pt, the same as EXP and LOT, with bold labels', () => {
     const layout = layoutLabel(labelFor({ itemCode: 'PARA18', packVolumeDigit: 2 }))
     expect(layout.itemCodeLine.runs).toEqual([
-      { text: 'PARA18', fontSizePt: 10, bold: true, gapBeforeMm: 0 },
-      { text: '60 mL', fontSizePt: 8, bold: true, gapBeforeMm: expect.any(Number) }
+      { text: 'PARA18', fontSizePt: 6.5, bold: true, gapBeforeMm: 0 },
+      { text: '60 mL', fontSizePt: 6.5, bold: true, gapBeforeMm: expect.any(Number) }
     ])
     expect(layout.expiryLine.runs).toEqual([
       { text: 'EXP', fontSizePt: 6.5, bold: true, gapBeforeMm: 0 },
