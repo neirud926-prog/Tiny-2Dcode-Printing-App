@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="640" viewBox="0 0 900 640" font-family="Segoe UI, Arial, sans-serif">
+<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#475467"/></marker></defs>
+<rect width="900" height="640" fill="#fff"/>
+<text x="40" y="36" font-size="22" font-weight="700" fill="#101828">Item Code → Internal GTIN (scheme v1)</text>
+<text x="40" y="58" font-size="14" fill="#667085">Example: Item Code PARA18, Pack Volume 60 mL → 2 04 2587344048 9</text>
+<text x="40" y="96" font-size="15" font-weight="700" fill="#1d2939">① Each character of the Item Code has a value (0–9 → 0–9, A–Z → 10–35, space 36, - 37, &amp; 38, . 39)</text>
+<rect x="40" y="112" width="64" height="52" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="72.0" y="148" font-size="28" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">P</text>
+<line x1="72.0" y1="166" x2="72.0" y2="196" stroke="#475467" stroke-width="2" marker-end="url(#a)"/>
+<text x="72.0" y="222" font-size="24" font-weight="700" text-anchor="middle" fill="#101828">25</text>
+<text x="72.0" y="248" font-size="15" text-anchor="middle" fill="#667085">× 40⁵</text>
+<rect x="116" y="112" width="64" height="52" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="148.0" y="148" font-size="28" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">A</text>
+<line x1="148.0" y1="166" x2="148.0" y2="196" stroke="#475467" stroke-width="2" marker-end="url(#a)"/>
+<text x="148.0" y="222" font-size="24" font-weight="700" text-anchor="middle" fill="#101828">10</text>
+<text x="148.0" y="248" font-size="15" text-anchor="middle" fill="#667085">× 40⁴</text>
+<rect x="192" y="112" width="64" height="52" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="224.0" y="148" font-size="28" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">R</text>
+<line x1="224.0" y1="166" x2="224.0" y2="196" stroke="#475467" stroke-width="2" marker-end="url(#a)"/>
+<text x="224.0" y="222" font-size="24" font-weight="700" text-anchor="middle" fill="#101828">27</text>
+<text x="224.0" y="248" font-size="15" text-anchor="middle" fill="#667085">× 40³</text>
+<rect x="268" y="112" width="64" height="52" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="300.0" y="148" font-size="28" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">A</text>
+<line x1="300.0" y1="166" x2="300.0" y2="196" stroke="#475467" stroke-width="2" marker-end="url(#a)"/>
+<text x="300.0" y="222" font-size="24" font-weight="700" text-anchor="middle" fill="#101828">10</text>
+<text x="300.0" y="248" font-size="15" text-anchor="middle" fill="#667085">× 40²</text>
+<rect x="344" y="112" width="64" height="52" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="376.0" y="148" font-size="28" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">1</text>
+<line x1="376.0" y1="166" x2="376.0" y2="196" stroke="#475467" stroke-width="2" marker-end="url(#a)"/>
+<text x="376.0" y="222" font-size="24" font-weight="700" text-anchor="middle" fill="#101828">1</text>
+<text x="376.0" y="248" font-size="15" text-anchor="middle" fill="#667085">× 40¹</text>
+<rect x="420" y="112" width="64" height="52" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="452.0" y="148" font-size="28" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">8</text>
+<line x1="452.0" y1="166" x2="452.0" y2="196" stroke="#475467" stroke-width="2" marker-end="url(#a)"/>
+<text x="452.0" y="222" font-size="24" font-weight="700" text-anchor="middle" fill="#101828">8</text>
+<text x="452.0" y="248" font-size="15" text-anchor="middle" fill="#667085">× 40⁰</text>
+<text x="560" y="150" font-size="14" fill="#475467">P = 25, A = 10, R = 27,</text><text x="560" y="170" font-size="14" fill="#475467">A = 10, 1 = 1, 8 = 8</text>
+<text x="560" y="222" font-size="14" fill="#475467">6 characters = a base-40 number:</text>
+<line x1="270" y1="258" x2="270" y2="288" stroke="#475467" stroke-width="2" marker-end="url(#a)"/>
+<text x="284" y="278" font-size="14" fill="#475467">add them up</text>
+<rect x="40" y="296" width="460" height="56" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="270" y="322" font-size="14" text-anchor="middle" fill="#475467">N = 25·40⁵ + 10·40⁴ + 27·40³ + 10·40² + 1·40 + 8</text>
+<text x="270" y="344" font-size="16" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">N = 2,587,344,048 → 2587344048 (10 digits)</text>
+<text x="520" y="330" font-size="14" fill="#475467">Padded with zeros to 10 digits</text><text x="520" y="350" font-size="14" fill="#475467">(always below 4,096,000,000 = 40⁶)</text>
+<text x="40" y="402" font-size="15" font-weight="700" fill="#1d2939">② Put the pieces together: 13 digits, then the GS1 check digit</text>
+<rect x="40" y="418" width="50" height="62" rx="8" fill="#fff4e5" stroke="#b54708" stroke-width="2"/>
+<text x="65.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#b54708" font-family="Consolas, monospace">2</text>
+<rect x="96" y="418" width="50" height="62" rx="8" fill="#f2f4f7" stroke="#475467" stroke-width="2"/>
+<text x="121.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#475467" font-family="Consolas, monospace">0</text>
+<rect x="152" y="418" width="50" height="62" rx="8" fill="#f2f4f7" stroke="#475467" stroke-width="2"/>
+<text x="177.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#475467" font-family="Consolas, monospace">4</text>
+<rect x="208" y="418" width="50" height="62" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="233.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">2</text>
+<rect x="264" y="418" width="50" height="62" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="289.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">5</text>
+<rect x="320" y="418" width="50" height="62" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="345.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">8</text>
+<rect x="376" y="418" width="50" height="62" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="401.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">7</text>
+<rect x="432" y="418" width="50" height="62" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="457.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">3</text>
+<rect x="488" y="418" width="50" height="62" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="513.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">4</text>
+<rect x="544" y="418" width="50" height="62" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="569.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">4</text>
+<rect x="600" y="418" width="50" height="62" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="625.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">0</text>
+<rect x="656" y="418" width="50" height="62" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="681.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">4</text>
+<rect x="712" y="418" width="50" height="62" rx="8" fill="#eff4ff" stroke="#175cd3" stroke-width="2"/>
+<text x="737.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#175cd3" font-family="Consolas, monospace">8</text>
+<rect x="768" y="418" width="50" height="62" rx="8" fill="#ecfdf3" stroke="#067647" stroke-width="2"/>
+<text x="793.0" y="460" font-size="30" font-weight="700" text-anchor="middle" fill="#067647" font-family="Consolas, monospace">9</text>
+<line x1="65.0" y1="486" x2="65.0" y2="520" stroke="#b54708" stroke-width="2" marker-start="url(#a)"/>
+<text x="40" y="548" font-size="14" font-weight="700" fill="#b54708">V = Pack Volume (digit 1)</text>
+<text x="40" y="568" font-size="13" fill="#475467">0 none · 1 = 30 mL · 2 = 60 mL</text>
+<text x="40" y="586" font-size="13" fill="#475467">3 = 120 mL · 4 = 240 mL</text>
+<text x="40" y="604" font-size="13" fill="#475467">5 = 480 mL   (60 mL → 2)</text>
+<line x1="149.0" y1="486" x2="149.0" y2="520" stroke="#475467" stroke-width="2" marker-start="url(#a)"/>
+<text x="250" y="548" font-size="14" font-weight="700" fill="#475467">04 = GS1 prefix (digits 2–3)</text>
+<text x="250" y="568" font-size="13" fill="#475467">company-internal use only,</text>
+<text x="250" y="586" font-size="13" fill="#475467">never issued to manufacturers</text>
+<line x1="485.0" y1="486" x2="485.0" y2="520" stroke="#175cd3" stroke-width="2" marker-start="url(#a)"/>
+<text x="470" y="548" font-size="14" font-weight="700" fill="#175cd3">N = Item Code (digits 4–13)</text>
+<text x="470" y="568" font-size="13" fill="#475467">step ① result, 10 digits</text>
+<text x="470" y="586" font-size="13" fill="#475467">decode: divide by 40 six times</text>
+<line x1="793.0" y1="486" x2="793.0" y2="520" stroke="#067647" stroke-width="2" marker-start="url(#a)"/>
+<text x="700" y="548" font-size="14" font-weight="700" fill="#067647">C = check digit (digit 14)</text>
+<text x="700" y="568" font-size="13" fill="#475467">GS1 mod-10 of digits 1–13</text>
+<text x="700" y="586" font-size="13" fill="#475467">2·3+0+4·3+2+5·3+8+7·3+3+</text>
+<text x="700" y="604" font-size="13" fill="#475467">4·3+4+0+4·3+8 = 111 → 9</text>
+</svg>
