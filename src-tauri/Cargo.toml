@@ -1,6 +1,6 @@
 [package]
 name = "tiny-2dcode"
-version = "0.1.1"
+version = "0.2.0"
 description = "2D Code Print: GS1 DataMatrix labels with an Internal GTIN, Expiry and Lot"
 authors = ["Wong Fuk Wing"]
 edition = "2021"
