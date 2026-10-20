@@ -26,18 +26,20 @@ cd src-tauri && cargo check --target x86_64-pc-windows-msvc   # compile-check th
 cd src-tauri && cargo test   # the path-scope and error-code tests (on Windows; elsewhere: rustc --edition 2021 --test src/scope.rs)
 ```
 
-CI (`.github/workflows/ci.yml`) runs the tests on every push and pull request, then builds the portable `.exe` on Windows and keeps it as a workflow artifact for 14 days.
+CI (`.github/workflows/ci.yml`) runs the tests on every push and pull request, then builds both Windows apps (the Electron portable `.exe` and the Tauri `.exe`) and keeps them as workflow artifacts for 14 days.
 
 ### Releasing
 
 1. Set `"version"` in `package.json` (e.g. `0.2.0`) and push to `main`.
-2. Push the matching tag: `git tag v0.2.0 && git push origin v0.2.0`. CI builds the `.exe` and publishes a GitHub Release with it attached and generated notes. A tag that does not match `package.json` fails the release.
+2. Push the matching tag: `git tag v0.2.0 && git push origin v0.2.0`, or run the CI workflow by hand on `main` (Actions → CI → Run workflow) with **Publish release** ticked, which creates the tag. CI builds both apps and publishes a GitHub Release with both `.exe` files attached and generated notes. A tag that does not match `package.json` fails the release.
 
-To test the release job without publishing anything, run the CI workflow by hand (Actions → CI → Run workflow) with **Release dry run** ticked: it creates a draft release, checks the `.exe` is attached, and deletes it.
+To test the release job without publishing anything, run the CI workflow by hand with **Release dry run** ticked: it creates a draft release, checks both `.exe` files are attached, and deletes it.
 
 ## Deploying on the shared drive
 
-1. Download `2DCodePrint-<version>-portable.exe` from [Releases](https://github.com/neirud926-prog/Tiny-2Dcode-Printing-App/releases). It is the whole app: no installer, no admin rights.
+1. Download one of the two builds from [Releases](https://github.com/neirud926-prog/Tiny-2Dcode-Printing-App/releases). Each is the whole app: no installer, no admin rights. Both read and write the same `LabelData\` folder, so PCs can use either.
+   - `2DCodePrint-<version>-tauri.exe` (a few MB): starts fast; uses the Microsoft Edge WebView2 Runtime that Windows 11 and up-to-date Windows 10 already have. A PC without it cannot run this build.
+   - `2DCodePrint-<version>-portable.exe` (about 100 MB): brings its own browser engine, so it runs on any Windows 10/11 PC; it unpacks itself at every start (see below).
 2. Copy it to a folder on the pharmacy shared drive that every staff member using the app can write to, e.g. `S:\Pharmacy\Label App\`. Every PC runs that same file. To upgrade, close the app on every PC, replace the `.exe` with the new one and keep `LabelData\`. The header shows the running version, e.g. `v0.1.0`.
 3. First launch: Setup asks for the Item List import (shared by every PC), then for this PC's printer and label size with a test print. Every other PC asks only for its own printer and test print. Later launches open straight to the label screen. Whenever there is no Stock Onhand dated today, a launch first asks to **Import** today's Stock Onhand report (shared by every PC) or **Skip** (type Lots by hand until the next launch).
 
