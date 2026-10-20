@@ -40,6 +40,16 @@ _Avoid_: stock list, inventory file
 A label request whose Item Code is not yet in the Item List, kept until a newer Item List is imported. One whose Expiry has passed is Expired and can only be deleted.
 _Avoid_: follow-up (BCS uses Follow-up for Not Match scans), to-do
 
+### Labels printed
+
+**GTIN Label**:
+A label carrying an Internal GTIN, Expiry and Lot in a GS1 DataMatrix, for BCS to scan like manufacturer stock.
+_Avoid_: 2D GTIN label, drug label
+
+**Custom Label**:
+A label with a 2D code holding short data that staff type, and optional lines of text; no fixed meaning, for any scanning need.
+_Avoid_: self-defined code, free label
+
 ### Labels scanned in
 
 **Shelf Label**:
