@@ -19,7 +19,7 @@ export function labelSizesPath(dataFolder: string): string {
   return platform().path.join(dataFolder, LABEL_SIZES_FILE_NAME)
 }
 
-export function labelSizesLockPath(dataFolder: string): string {
+function labelSizesLockPath(dataFolder: string): string {
   return platform().path.join(dataFolder, LABEL_SIZES_LOCK_NAME)
 }
 

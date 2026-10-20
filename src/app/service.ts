@@ -8,6 +8,7 @@
 import { localIsoDate } from '../core/expiry'
 import { errorText } from '../data/atomicWrite'
 import { checkDataFolder, checkFolderWritable } from '../data/dataFolder'
+import { BUILT_IN_TEMPLATES } from '../core/template'
 import { createItemListSource } from '../data/itemListStore'
 import { addLabelSize, deleteLabelSize, isLabelSizeInUse, readLabelSizes } from '../data/labelSizeStore'
 import { defaultLogFolder, loadPcSettings, resolveLogFolder, savePcSettings } from '../data/pcSettings'
@@ -90,7 +91,7 @@ export function createAppService(host: AppHost): PreloadApi {
         ? deleteExpiredPendingLabels(dataFolder, localIsoDate(deps.now()))
         : Promise.resolve<DeleteExpiredOutcome>({ ok: false, message: 'The data folder is not ready.' }),
     listTemplates: () => (folderReady ? listTemplates(dataFolder) : notReady()),
-    saveTemplate: (template) => (folderReady ? saveTemplateRequest(template, templateContext) : notReady()),
+    saveTemplate: (template, opened) => (folderReady ? saveTemplateRequest(template, opened ?? null, templateContext) : notReady()),
     renameTemplate: (id, name) => (folderReady ? renameTemplateRequest(id, name, templateContext) : notReady()),
     copyTemplate: (id, name) => (folderReady ? copyTemplateRequest(id, name, templateContext) : notReady()),
     deleteTemplate: (id) => (folderReady ? deleteTemplateRequest(id, templateContext) : notReady()),
@@ -99,9 +100,9 @@ export function createAppService(host: AppHost): PreloadApi {
         if (!folderReady) return { ok: false, message: 'Not printed: the data folder is not ready.' }
         const sizes = await readLabelSizes(dataFolder)
         if (!sizes.ok) return { ok: false, message: `Not printed: ${sizes.message}` }
+        // A damaged templates.dat must not stop the built-in Layouts, which do not depend on it.
         const templates = await listTemplates(dataFolder)
-        if (!templates.ok) return { ok: false, message: `Not printed: ${templates.message}` }
-        return printCustomLabelRequest(request, settings, sizes.sizes, templates.templates, context, deps)
+        return printCustomLabelRequest(request, settings, sizes.sizes, templates.ok ? templates.templates : BUILT_IN_TEMPLATES, context, deps)
       }),
     listLabelSizes: () => (folderReady ? readLabelSizes(dataFolder) : notReady()),
     addLabelSize: async (size) => {

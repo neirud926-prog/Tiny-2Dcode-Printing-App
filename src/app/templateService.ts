@@ -26,16 +26,18 @@ export async function listTemplates(dataFolder: string): Promise<TemplatesList> 
   return read.ok ? { ok: true, templates: [...BUILT_IN_TEMPLATES, ...read.templates] } : read
 }
 
-export async function saveTemplateRequest(input: unknown, context: TemplateContext): Promise<TemplateChangeOutcome> {
+export async function saveTemplateRequest(input: unknown, openedInput: unknown, context: TemplateContext): Promise<TemplateChangeOutcome> {
   const template = parseTemplate(input)
   if (!template) return { ok: false, message: 'The template is not valid.' }
+  const opened = openedInput == null ? null : parseTemplate(openedInput)
+  if (openedInput != null && !opened) return { ok: false, message: 'The template is not valid.' }
   const sizes = await readLabelSizes(context.dataFolder)
   const size = sizes.ok ? sizes.sizes.find((entry) => entry.id === template.labelSizeId) : undefined
   const changed: TemplateChange<Template> = !sizes.ok
     ? sizes
     : !size
       ? { ok: false, message: 'That label size is no longer in the list.' }
-      : await saveTemplate(context.dataFolder, template, (checked, original) => templateProblems(checked, size, original).join(' ') || null)
+      : await saveTemplate(context.dataFolder, template, (checked, original) => templateProblems(checked, size, original).join(' ') || null, opened)
   return logged(context, 'Save', changed.ok ? changed.value.name : template.name, changed, 'Saved')
 }
 

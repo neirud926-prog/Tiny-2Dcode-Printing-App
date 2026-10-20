@@ -15,6 +15,14 @@ describe('CSV fields and lines', () => {
     expect(csvField(' leading')).toBe('" leading"')
   })
 
+  it('keeps Excel from reading a field as a formula', () => {
+    expect(csvField('+852-1234')).toBe("'+852-1234")
+    expect(csvField('-- FRIDGE')).toBe("'-- FRIDGE")
+    expect(csvField('=HYPERLINK("http://x","y")')).toBe('"\'=HYPERLINK(""http://x"",""y"")"')
+    expect(csvField('@cmd')).toBe("'@cmd")
+    expect(csvField('2512172-1')).toBe('2512172-1')
+  })
+
   it('joins fields into one CRLF-terminated line', () => {
     expect(csvLine(['a', 'b,c', ''])).toBe('a,"b,c",\r\n')
   })

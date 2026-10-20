@@ -65,17 +65,8 @@ export function CustomLabelScreen({ settings }: CustomLabelScreenProps): React.J
   }
 
   useEffect(() => {
-    let current = true
-    void window.api.listTemplates().then((list) => {
-      if (!current) return
-      if (list.ok) setTemplates(list.templates)
-      setTemplatesMessage(list.ok ? null : list.message)
-    })
-    void window.api.listLabelSizes().then((list) => current && list.ok && setSizes(list.sizes))
-    return () => {
-      current = false
-    }
-  }, [settings.labelSizeId])
+    void refreshLists()
+  }, [settings.labelSizeId]) // refreshLists only sets this tab's state, which stays mounted
 
   /** After a Template change: the new list, and the Template changed selected. */
   function templatesChanged(outcome: Extract<TemplateChangeOutcome, { ok: true }>): void {

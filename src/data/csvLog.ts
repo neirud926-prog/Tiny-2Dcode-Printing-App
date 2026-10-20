@@ -6,9 +6,13 @@
 import { errorCode } from './atomicWrite'
 import { platform } from './platform'
 
-/** A CSV field, quoted only when it holds a comma, quote, line break or leading/trailing space. */
+/**
+ * A CSV field, quoted only when it holds a comma, quote, line break or leading/trailing space. A
+ * value starting with = + - or @ gets a leading ' so Excel shows it as text, not a formula.
+ */
 export function csvField(value: string): string {
-  return /[",\r\n]|^\s|\s$/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+  const text = /^[=+\-@]/.test(value) ? `'${value}` : value
+  return /[",\r\n]|^\s|\s$/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
 /** One CSV line, CRLF-terminated. */

@@ -7,7 +7,7 @@
  * Pure: no Node, DOM or Electron.
  */
 
-import { SMALL_LABEL } from '../render/printSettings'
+import { isRecord, SMALL_LABEL } from '../render/printSettings'
 
 export type Symbology = 'datamatrix' | 'qr'
 export type DotsPerModule = 3 | 4 | 5
@@ -157,10 +157,6 @@ export function parseTemplate(value: unknown): Template | null {
     },
     texts
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function isNumber(value: unknown): value is number {

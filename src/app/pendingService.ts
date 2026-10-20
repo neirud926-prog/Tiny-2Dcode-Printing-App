@@ -8,7 +8,8 @@ import { expiryHasPassed, formatExpiry, localIsoDate, parseExpiry } from '../cor
 import { isLiquid, lookupItem, type ItemIndex } from '../core/itemList'
 import { buildLabel } from '../core/label'
 import { isExpired, pendingLabelRequest, viewPendingLabels, type PendingLabelInput } from '../core/pendingLabel'
-import { addPending, changePending, defaultPendingDeps, readPending, removePending, restorePending } from '../data/pendingStore'
+import { defaultLockDeps } from '../data/fileLock'
+import { addPending, changePending, readPending, removePending, restorePending } from '../data/pendingStore'
 import type { DeleteExpiredOutcome, DeletePendingOutcome, PendingLabelsList, PrintOutcome, SavePendingOutcome } from '../preload/api'
 import type { PcSettings } from '../render/printSettings'
 import { gtinLabelSizeProblem, printLabelRequest, type PrintContext, type PrintServiceDeps } from './printService'
@@ -38,7 +39,7 @@ export async function savePendingLabel(input: unknown, context: PrintContext, de
       savedBy: context.windowsUser,
       pc: context.pcName
     },
-    { ...defaultPendingDeps, now: () => at }
+    { ...defaultLockDeps, now: () => at }
   )
   if (!saved.ok) return { ok: false, message: `Not saved: ${saved.message}` }
   return { ok: true, message: `Saved ${label.itemCode} as a Pending Label. It prints once an Item List with this Item Code is imported.` }

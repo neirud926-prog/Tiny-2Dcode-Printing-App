@@ -168,7 +168,8 @@ export interface PreloadApi {
    * saved one with its id. Refused, with the reason, unless its name is new ignoring case and its
    * layout is valid on its Label Size. Built-ins cannot be saved. Logged either way.
    */
-  saveTemplate(template: Template): Promise<TemplateChangeOutcome>
+  /** `opened`: the stored version the designer started from; refused if another PC has changed it since. */
+  saveTemplate(template: Template, opened?: Template | null): Promise<TemplateChangeOutcome>
   /** Renames a saved Template (name new ignoring case). Logged. */
   renameTemplate(id: string, name: string): Promise<TemplateChangeOutcome>
   /** Copies a built-in or saved Template, positions and all, under a new name. Logged. */

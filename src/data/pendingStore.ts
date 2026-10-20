@@ -13,7 +13,6 @@ import { readSealed, writeSealed } from './sealed'
 export const PENDING_FILE_NAME = 'pending.dat'
 export const PENDING_LOCK_NAME = 'pending.lock'
 
-export { LOCK_RETRY_DELAYS_MS, STALE_LOCK_MS } from './fileLock'
 
 export function pendingPath(dataFolder: string): string {
   return platform().path.join(dataFolder, PENDING_FILE_NAME)
@@ -24,9 +23,7 @@ export function pendingLockPath(dataFolder: string): string {
 }
 
 /** What the Pending Label store uses from outside, replaceable in tests. */
-export type PendingStoreDeps = LockDeps
 
-export const defaultPendingDeps: PendingStoreDeps = defaultLockDeps
 
 export type PendingReadResult = { ok: true; labels: PendingLabel[] } | { ok: false; message: string }
 
@@ -56,7 +53,7 @@ export type PendingChange<T> = { ok: true; value: T } | { ok: false; message: st
 export async function changePending<T>(
   dataFolder: string,
   change: (labels: readonly PendingLabel[]) => { ok: true; labels: readonly PendingLabel[]; value: T } | { ok: false; message: string },
-  deps: PendingStoreDeps = defaultPendingDeps
+  deps: LockDeps = defaultLockDeps
 ): Promise<PendingChange<T>> {
   return withFileLock(pendingLockPath(dataFolder), 'The Pending Labels', deps, async () => {
     const current = await readPending(dataFolder)
@@ -76,7 +73,7 @@ export async function changePending<T>(
 export function addPending(
   dataFolder: string,
   label: Omit<PendingLabel, 'id' | 'savedAt'>,
-  deps: PendingStoreDeps = defaultPendingDeps
+  deps: LockDeps = defaultLockDeps
 ): Promise<PendingChange<PendingLabel>> {
   return changePending(
     dataFolder,
@@ -92,7 +89,7 @@ export function addPending(
 }
 
 /** Removes a Pending Label and returns it, so whoever removed it alone may print it. */
-export function removePending(dataFolder: string, id: string, deps: PendingStoreDeps = defaultPendingDeps): Promise<PendingChange<PendingLabel>> {
+export function removePending(dataFolder: string, id: string, deps: LockDeps = defaultLockDeps): Promise<PendingChange<PendingLabel>> {
   return changePending(
     dataFolder,
     (labels) => {
@@ -105,7 +102,7 @@ export function removePending(dataFolder: string, id: string, deps: PendingStore
 }
 
 /** Puts a removed Pending Label back (a print that failed), unless it is already there. */
-export function restorePending(dataFolder: string, label: PendingLabel, deps: PendingStoreDeps = defaultPendingDeps): Promise<PendingChange<null>> {
+export function restorePending(dataFolder: string, label: PendingLabel, deps: LockDeps = defaultLockDeps): Promise<PendingChange<null>> {
   return changePending(
     dataFolder,
     (labels) => (labels.some((existing) => existing.id === label.id) ? { ok: true, labels, value: null } : { ok: true, labels: [...labels, label], value: null }),

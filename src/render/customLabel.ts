@@ -28,7 +28,7 @@ import { formatLabelSizeMm, type LabelSizeEntry } from './printSettings'
 
 /** Text squeezed narrower than this share of its width is refused instead. */
 export const MIN_TEXT_SCALE = 0.7
-/** The code (with its quiet zone) and the text stay at least this far inside the label. */
+/** Text stays at least this far inside the label; the code at least this far, or its quiet zone if more. */
 export const MIN_EDGE_MM = 1
 
 /** What staff typed for a Custom Label. */

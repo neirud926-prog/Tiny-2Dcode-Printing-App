@@ -54,12 +54,22 @@ export async function readTemplates(dataFolder: string): Promise<TemplatesRead> 
  * Saves a Template: a new one (id `''`) gets an id; any other replaces the stored one with its id.
  * Its name must be new, ignoring case; `check` judges its layout.
  */
-export function saveTemplate(dataFolder: string, template: Template, check: TemplateCheck, deps: LockDeps = defaultLockDeps): Promise<TemplateChange<Template>> {
+export function saveTemplate(
+  dataFolder: string,
+  template: Template,
+  check: TemplateCheck,
+  opened: Template | null = null,
+  deps: LockDeps = defaultLockDeps
+): Promise<TemplateChange<Template>> {
   return changeTemplates(
     dataFolder,
     (templates) => {
       const original = template.id === '' ? null : templates.find((entry) => entry.id === template.id)
       if (original === undefined) return refusal(template.id) ?? gone()
+      // Saving over a version another PC has changed since this one was opened would undo that change.
+      if (original && opened && JSON.stringify(original) !== JSON.stringify(opened)) {
+        return { ok: false, message: 'This template was changed on another PC; open it again.' }
+      }
       const named = nameProblem(templates, template.name, template.id)
       if (!named.ok) return named
       const problem = check(template, original)

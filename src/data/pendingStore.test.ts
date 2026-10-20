@@ -1,16 +1,17 @@
 import { utimes, writeFile, readdir } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import { MAX_PENDING_LABELS, type PendingLabel } from '../core/pendingLabel'
-import { addPending, pendingLockPath, pendingPath, readPending, removePending, restorePending, STALE_LOCK_MS, type PendingStoreDeps } from './pendingStore'
+import { STALE_LOCK_MS, type LockDeps } from './fileLock'
+import { addPending, pendingLockPath, pendingPath, readPending, removePending, restorePending } from './pendingStore'
 import { writeSealed } from './sealed'
 import { tempFolder } from './testFolder'
 
 const input = { itemCode: 'NEW001', packVolumeDigit: null, expiry: '31122027', lot: 'A1', copies: 2, savedBy: 'chantm', pc: 'PHARM-01' } as const
 
-const deps = (now = new Date(2026, 9, 19, 9, 0, 0)): PendingStoreDeps => ({ now: () => now, sleep: async () => undefined })
+const deps = (now = new Date(2026, 9, 19, 9, 0, 0)): LockDeps => ({ now: () => now, sleep: async () => undefined })
 
 /** Real timers, a tenth of the usual waits, so a held lock is waited out for real. */
-const realDeps: PendingStoreDeps = { now: () => new Date(), sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms / 10)) }
+const realDeps: LockDeps = { now: () => new Date(), sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms / 10)) }
 
 describe('Pending Labels store', () => {
   it('has none before the first is saved', async () => {

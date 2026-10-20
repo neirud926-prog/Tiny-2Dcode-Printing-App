@@ -164,7 +164,7 @@ export function TemplateDesigner({ initial, size, templates, onSaved, onCancel }
     setSaving(true)
     setRefused(null)
     try {
-      const outcome = await window.api.saveTemplate(draft)
+      const outcome = await window.api.saveTemplate(draft, original)
       if (outcome.ok) onSaved(outcome)
       else setRefused(outcome.message)
     } catch (error) {

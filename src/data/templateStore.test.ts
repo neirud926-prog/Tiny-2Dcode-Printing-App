@@ -22,7 +22,7 @@ async function stored(folder: string): Promise<Template[]> {
 }
 
 async function saved(folder: string, template: Template, deps?: LockDeps): Promise<Template> {
-  const result = await saveTemplate(folder, template, anyLayout, deps)
+  const result = await saveTemplate(folder, template, anyLayout, null, deps)
   if (!result.ok) throw new Error(result.message)
   return result.value
 }
@@ -103,8 +103,8 @@ describe('Templates store', () => {
   it('is shared: saves, renames and deletes at the same time on two PCs are all kept', async () => {
     const folder = await tempFolder()
     const [keep, gone] = [await saved(folder, draft('Keep')), await saved(folder, draft('Gone'))]
-    const pcOne = Promise.all([0, 1, 2].map((i) => saveTemplate(folder, draft(`PC1 ${i}`), anyLayout, realDeps)))
-    const pcTwo = Promise.all([0, 1, 2].map((i) => saveTemplate(folder, draft(`PC2 ${i}`), anyLayout, realDeps)))
+    const pcOne = Promise.all([0, 1, 2].map((i) => saveTemplate(folder, draft(`PC1 ${i}`), anyLayout, null, realDeps)))
+    const pcTwo = Promise.all([0, 1, 2].map((i) => saveTemplate(folder, draft(`PC2 ${i}`), anyLayout, null, realDeps)))
     const [one, two, renamed, deleted] = await Promise.all([pcOne, pcTwo, renameTemplate(folder, keep.id, 'Kept', realDeps), deleteTemplate(folder, gone.id, realDeps)])
     expect([...one, ...two, renamed, deleted].every((result) => result.ok)).toBe(true)
     expect((await stored(folder)).map((template) => template.name).sort()).toEqual(['Kept', 'PC1 0', 'PC1 1', 'PC1 2', 'PC2 0', 'PC2 1', 'PC2 2'])
@@ -126,5 +126,17 @@ describe('Templates store', () => {
     expect(await readTemplates(folder)).toEqual({ ok: false, message: 'The Templates (templates.dat) were changed outside the app.' })
     expect(await saveTemplate(folder, draft('Shelf bin'), anyLayout)).toEqual({ ok: false, message: expect.stringContaining('changed outside the app') })
     expect(await isLabelSizeInUse(folder, 'shelf')).toBe(true)
+  })
+
+  it('refuses to save over a version another PC changed since it was opened', async () => {
+    const folder = await tempFolder()
+    const opened = await saved(folder, draft('Fridge'))
+    expect((await renameTemplate(folder, opened.id, 'Fridge 2')).ok).toBe(true)
+    expect(await saveTemplate(folder, { ...opened, name: 'Fridge' }, anyLayout, opened)).toEqual({
+      ok: false,
+      message: 'This template was changed on another PC; open it again.'
+    })
+    const listed = await readTemplates(folder)
+    expect(listed.ok && listed.templates.map((t) => t.name)).toEqual(['Fridge 2'])
   })
 })
