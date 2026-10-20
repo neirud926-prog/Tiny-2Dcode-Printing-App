@@ -7,6 +7,6 @@ import { tauriPlatform } from './platform'
 setPlatform(tauriPlatform)
 void createTauriHost().then(async (host) => {
   window.api = createAppService(host)
-  // The Electron app's screens, imported once window.api is there.
+  // The app's screens, imported once window.api is there.
   await import('../renderer/src/main')
 })

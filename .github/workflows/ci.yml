@@ -1,12 +1,11 @@
 name: CI
 
-# Every push and pull request: tests, then both Windows builds as workflow artifacts (14 days): the
-# Electron portable .exe and the small Tauri .exe (WebView2). A pushed `v*` tag matching package.json
-# "version" (e.g. v0.1.0) also publishes a GitHub Release with both. Running the workflow by hand on
-# main with "Publish release" does the same without pushing a tag: the release job creates tag
-# v<version> on the commit it built. To test the release job without publishing, run it by hand with
-# "Release dry run": it creates a draft release (never public), checks both .exe files are attached,
-# then deletes it.
+# Every push and pull request: tests, then the Windows Tauri .exe (WebView2) as a workflow artifact
+# (14 days), 2DCodePrint-<version>.exe. A pushed `v*` tag matching package.json "version" (e.g.
+# v0.3.0) also publishes a GitHub Release with it. Running the workflow by hand on main with "Publish
+# release" does the same without pushing a tag: the release job creates tag v<version> on the commit
+# it built. To test the release job without publishing, run it by hand with "Release dry run": it
+# creates a draft release (never public), checks exactly that one .exe is attached, then deletes it.
 on:
   push:
   pull_request:
@@ -35,49 +34,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Typecheck and build
+      - name: Typecheck and build the webview
         run: npm run build
-
-  windows:
-    name: Windows portable .exe
-    needs: test
-    runs-on: windows-latest
-    timeout-minutes: 30
-    outputs:
-      version: ${{ steps.name.outputs.version }}
-      exe: ${{ steps.name.outputs.exe }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Name the .exe
-        id: name
-        shell: bash
-        run: |
-          version=$(node -p "require('./package.json').version")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          # Must match portable.artifactName in electron-builder.yml.
-          echo "exe=2DCodePrint-$version-portable.exe" >> "$GITHUB_OUTPUT"
-      - name: Build the portable .exe
-        run: npm run dist:win
-      - name: Check one portable .exe was built
-        shell: bash
-        env:
-          EXE: ${{ steps.name.outputs.exe }}
-        run: |
-          ls -l release/*.exe
-          test "$(ls release/*.exe | wc -l)" -eq 1
-          test -f "release/$EXE"
-      # Uploaded as the bare .exe, not zipped; the artifact takes the file's name.
-      - uses: actions/upload-artifact@v7
-        with:
-          path: release/${{ steps.name.outputs.exe }}
-          archive: false
-          if-no-files-found: error
-          retention-days: 14
 
   tauri:
     name: Windows Tauri .exe
@@ -85,6 +43,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     outputs:
+      version: ${{ steps.name.outputs.version }}
       exe: ${{ steps.name.outputs.exe }}
     steps:
       - uses: actions/checkout@v7
@@ -99,7 +58,10 @@ jobs:
       - name: Name the .exe
         id: name
         shell: bash
-        run: echo "exe=2DCodePrint-$(node -p "require('./package.json').version")-tauri.exe" >> "$GITHUB_OUTPUT"
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "exe=2DCodePrint-$version.exe" >> "$GITHUB_OUTPUT"
       - name: Rust tests (path scope, error codes, print helpers)
         run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Build the Tauri .exe
@@ -122,7 +84,7 @@ jobs:
 
   release:
     name: GitHub Release
-    needs: [windows, tauri]
+    needs: tauri
     if: >-
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && (inputs.release-dry-run || inputs.publish-release))
@@ -133,18 +95,14 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      VERSION: ${{ needs.windows.outputs.version }}
-      EXE: ${{ needs.windows.outputs.exe }}
-      TAURI_EXE: ${{ needs.tauri.outputs.exe }}
+      VERSION: ${{ needs.tauri.outputs.version }}
+      EXE: ${{ needs.tauri.outputs.exe }}
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.windows.outputs.exe }}
-      - uses: actions/download-artifact@v8
-        with:
           name: ${{ needs.tauri.outputs.exe }}
-      - name: Check both .exe files were downloaded
-        run: ls -l "$EXE" "$TAURI_EXE"
+      - name: Check the .exe was downloaded
+        run: ls -l "$EXE"
       - name: Publish the release
         if: github.event_name == 'push'
         run: |
@@ -152,7 +110,7 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $VERSION. Push tag v$VERSION, or change the version first."
             exit 1
           fi
-          gh release create "$GITHUB_REF_NAME" "$EXE" "$TAURI_EXE" --verify-tag --generate-notes --title "2D Code Print $GITHUB_REF_NAME"
+          gh release create "$GITHUB_REF_NAME" "$EXE" --verify-tag --generate-notes --title "2D Code Print $GITHUB_REF_NAME"
       - name: Publish the release from a manual run (creates the tag)
         if: github.event_name == 'workflow_dispatch' && inputs.publish-release && !inputs.release-dry-run
         run: |
@@ -160,13 +118,13 @@ jobs:
             echo "::error::Publish release only from main (this run is on $GITHUB_REF)."
             exit 1
           fi
-          gh release create "v$VERSION" "$EXE" "$TAURI_EXE" --target "$GITHUB_SHA" --generate-notes --title "2D Code Print v$VERSION"
+          gh release create "v$VERSION" "$EXE" --target "$GITHUB_SHA" --generate-notes --title "2D Code Print v$VERSION"
       - name: Dry run (draft release, deleted again)
         if: github.event_name == 'workflow_dispatch' && inputs.release-dry-run
         run: |
           tag="v$VERSION-dry-run.$GITHUB_RUN_ID"
           trap 'gh release delete "$tag" --yes || true' EXIT
-          gh release create "$tag" "$EXE" "$TAURI_EXE" --draft --target "$GITHUB_SHA" --generate-notes --title "Dry run $tag"
+          gh release create "$tag" "$EXE" --draft --target "$GITHUB_SHA" --generate-notes --title "Dry run $tag"
           gh release view "$tag" --json isDraft,assets --jq '{isDraft, assets: [.assets[] | {name, size}]}'
           test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true
-          test "$(gh release view "$tag" --json assets --jq '[.assets[].name] | sort | join(" ")')" = "$(printf '%s\n' "$EXE" "$TAURI_EXE" | LC_ALL=C sort | paste -sd ' ')"
+          test "$(gh release view "$tag" --json assets --jq '[.assets[].name] | join(" ")')" = "$EXE"

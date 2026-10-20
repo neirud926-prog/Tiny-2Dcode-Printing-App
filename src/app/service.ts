@@ -1,5 +1,5 @@
 /**
- * The app behind `window.api`, the same in the Electron and the Tauri app: the host supplies where
+ * The app behind `window.api`, run in the Tauri webview: the host supplies where
  * the data lives, who and where this PC is, the file dialog, the printer list and printing.
  * Everything the renderer sends is validated here; the renderer can name a log folder, an Item
  * List file or a Stock Onhand report only by choosing it in the system dialog (or the default),

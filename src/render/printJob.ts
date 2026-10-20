@@ -1,7 +1,7 @@
 /**
  * The print job for a label: a one-page HTML document holding the label SVG at its real size, and
- * the options for Electron's silent print. The main process loads the page in a hidden window and
- * passes the options to `webContents.print`, so what reaches the driver is decided (and tested) here.
+ * the options for a silent print. The Rust shell (`src-tauri/src/printing.rs`) prints the page with
+ * them, so what reaches the driver is decided (and tested) here.
  *
  * Pure: no Node, DOM or Electron.
  */

@@ -1,5 +1,5 @@
 {
-  "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
+  "extends": "./tsconfig.base.json",
   "include": [
     "src/tauri/**/*",
     "src/renderer/src/**/*",
@@ -19,6 +19,7 @@
   ],
   "compilerOptions": {
     "composite": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     // No Node types: the webview has no Node, so a Node import fails here.
     "types": [],

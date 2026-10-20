@@ -1,4 +1,4 @@
-// Vitest runs the data layer on Node, as the Electron main process does.
+// Vitest runs the data layer on Node.
 import { nodePlatform } from './nodePlatform'
 import { setPlatform } from './platform'
 
