@@ -1,11 +1,12 @@
 /**
- * GS1 DataMatrix symbol for a label, drawn by bwip-js as SVG. No Electron and no DOM: this runs in
+ * The 2D symbols, drawn by bwip-js as SVG: a GTIN Label's GS1 DataMatrix and a Custom Label's Plain code. No Electron and no DOM: this runs in
  * the renderer and in Node tests alike.
  */
 
 // The default export: bwip-js's named `raw` export is the encoder for the "raw" symbology, not ToRaw.
 import bwipjs from 'bwip-js'
 import type { Label } from '../core/label'
+import type { Symbology } from '../core/template'
 
 /** The label printer's resolution (Zebra GX420t). */
 export const PRINTER_DPI = 203
@@ -59,28 +60,52 @@ export interface DataMatrixSymbol {
 /** Draws the GS1 DataMatrix for a label, sized at {@link MODULE_MM} per module, {@link MIN_SYMBOL_SIZE} at least. */
 export function renderDataMatrix(data: SymbolData): DataMatrixSymbol {
   const options = dataMatrixOptions(data)
-  // BWIPP takes `version` (the symbol size) for DataMatrix; bwip-js's option types do not list it.
-  let size: { version?: string } = { version: MIN_SYMBOL_SIZE }
-  let encoded
   try {
-    encoded = bwipjs.raw(options.bcid, options.text, { parse: options.parse, ...size } as { parse: true })
+    // BWIPP takes `version` (the symbol size) for DataMatrix; bwip-js's option types do not list it.
+    return drawSymbol({ ...options, version: MIN_SYMBOL_SIZE } as DataMatrixOptions, MODULE_MM)
   } catch {
     // The data does not fit the minimum size: let bwip-js pick the smallest size that holds it.
-    size = {}
-    encoded = bwipjs.raw(options.bcid, options.text, { parse: options.parse })
+    return drawSymbol(options, MODULE_MM)
   }
-  const [matrix] = encoded
-  if (!matrix || !('pixx' in matrix)) throw new Error('bwip-js returned no DataMatrix')
+}
 
-  const svg = bwipjs.toSVG({ ...options, ...size, padding: 0 } as typeof options & { padding: number })
+/** A Plain code drawn: also its quiet zone, the clear margin it needs on every side. */
+export interface PlainCodeSymbol extends DataMatrixSymbol {
+  readonly quietZoneMm: number
+}
+
+/**
+ * The bwip-js options for a Plain code: exactly `text`, no GS1 AIs (no `parse`, so `^` is not
+ * special), always the size that holds 40 characters of the allowed set (all one codeword each in
+ * ASCII mode or QR byte mode), so a Template's layout never depends on the data.
+ */
+export function plainCodeOptions(symbology: Symbology, text: string): { bcid: string; text: string; version: string; eclevel?: string } {
+  return symbology === 'qr' ? { bcid: 'qrcode', text, version: '3', eclevel: 'M' } : { bcid: 'datamatrix', text, version: '26x26' }
+}
+
+/** Quiet zone in modules: DataMatrix 1, QR 4. */
+const QUIET_ZONE_MODULES: Record<Symbology, number> = { datamatrix: 1, qr: 4 }
+
+/** Draws a Plain code with each module `dotsPerModule` printer dots. */
+export function renderPlainCode(symbology: Symbology, text: string, dotsPerModule: number): PlainCodeSymbol {
+  const moduleMm = dotsPerModule * DOT_MM
+  return { ...drawSymbol(plainCodeOptions(symbology, text), moduleMm), quietZoneMm: QUIET_ZONE_MODULES[symbology] * moduleMm }
+}
+
+function drawSymbol(options: { bcid: string; text: string }, moduleMm: number): DataMatrixSymbol {
+  const { bcid, text, ...rest } = options
+  const [matrix] = bwipjs.raw(bcid, text, rest as object)
+  if (!matrix || !('pixx' in matrix)) throw new Error(`bwip-js returned no ${bcid}`)
+
+  const svg = bwipjs.toSVG({ ...options, padding: 0 } as Parameters<typeof bwipjs.toSVG>[0])
   const match = /^<svg\b[^>]*\bviewBox="([^"]+)"[^>]*>([\s\S]*)<\/svg>\s*$/.exec(svg)
   if (!match) throw new Error('Unexpected SVG from bwip-js')
 
   return {
     columns: matrix.pixx,
     rows: matrix.pixy,
-    widthMm: matrix.pixx * MODULE_MM,
-    heightMm: matrix.pixy * MODULE_MM,
+    widthMm: matrix.pixx * moduleMm,
+    heightMm: matrix.pixy * moduleMm,
     viewBox: match[1],
     markup: match[2].trim()
   }

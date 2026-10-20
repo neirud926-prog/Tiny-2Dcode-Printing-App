@@ -613,7 +613,8 @@ export function LabelScreen({
 
 interface FieldProps {
   label: string
-  field: FormField
+  /** The input's id; its messages are `<field>-messages`. */
+  field: string
   errors: string[]
   warnings?: string[]
   hint?: string
@@ -621,7 +622,7 @@ interface FieldProps {
   children: React.ReactNode
 }
 
-function Field({ label, field, errors, warnings = [], hint, confirmation, children }: FieldProps): React.JSX.Element {
+export function Field({ label, field, errors, warnings = [], hint, confirmation, children }: FieldProps): React.JSX.Element {
   return (
     <div className="field">
       <label htmlFor={field}>{label}</label>

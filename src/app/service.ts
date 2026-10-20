@@ -6,6 +6,7 @@
  * and never sends markup.
  */
 import { localIsoDate } from '../core/expiry'
+import { BUILT_IN_TEMPLATES } from '../core/template'
 import { errorText } from '../data/atomicWrite'
 import { checkDataFolder, checkFolderWritable } from '../data/dataFolder'
 import { createItemListSource } from '../data/itemListStore'
@@ -26,13 +27,14 @@ import type {
   PrintOutcome,
   SavePendingOutcome,
   SaveSettingsOutcome,
-  StockLotsLookup
+  StockLotsLookup,
+  TemplatesList
 } from '../preload/api'
 import { normalisePcSettings, printSettingsFor, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import type { AppHost } from './host'
 import { itemLookupFor, stockLotsLookupFor } from './itemLookup'
 import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
-import { printerProblem, printLabelRequest, printTestLabel, type PrintContext, type PrintServiceDeps } from './printService'
+import { printCustomLabelRequest, printerProblem, printLabelRequest, printTestLabel, type PrintContext, type PrintServiceDeps } from './printService'
 
 /**
  * The API for one app window. The arguments are typed as the renderer sends them, but are checked
@@ -81,6 +83,14 @@ export function createAppService(host: AppHost): PreloadApi {
       folderReady
         ? deleteExpiredPendingLabels(dataFolder, localIsoDate(deps.now()))
         : Promise.resolve<DeleteExpiredOutcome>({ ok: false, message: 'The data folder is not ready.' }),
+    listTemplates: () => Promise.resolve<TemplatesList>({ ok: true, templates: [...BUILT_IN_TEMPLATES] }),
+    printCustomLabel: (request) =>
+      exclusively(async () => {
+        if (!folderReady) return { ok: false, message: 'Not printed: the data folder is not ready.' }
+        const sizes = await readLabelSizes(dataFolder)
+        if (!sizes.ok) return { ok: false, message: `Not printed: ${sizes.message}` }
+        return printCustomLabelRequest(request, settings, sizes.sizes, BUILT_IN_TEMPLATES, context, deps)
+      }),
     listLabelSizes: () => (folderReady ? readLabelSizes(dataFolder) : notReady()),
     addLabelSize: async (size) => {
       if (!folderReady) return notReady()

@@ -3,7 +3,10 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildLabel, type LabelRequest } from '../core/label'
 import { linesOf, parseCsvLine } from './csvTesting'
-import { appendPrintLog, PRINT_LOG_HEADER, printLogEntryFor, printLogFileName, printLogLine, type PrintLogEntry } from './printLog'
+import { LAYOUT_2 } from '../core/template'
+import { buildCustomLabel } from '../render/customLabel'
+import { SMALL_LABEL } from '../render/printSettings'
+import { appendPrintLog, customPrintLogEntryFor, PRINT_LOG_HEADER, printLogEntryFor, printLogFileName, printLogLine, type PrintLogEntry } from './printLog'
 import { tempFolder } from './testFolder'
 
 const today = '2026-10-19'
@@ -20,8 +23,22 @@ const at = new Date(2026, 9, 19, 14, 3, 7)
 const entry: PrintLogEntry = printLogEntryFor(labelFor(), { at, windowsUser: 'chantm', pcName: 'PHARM-01' })
 
 describe('print log line', () => {
-  it('records date/time, Windows user, PC, Item Code, Pack Volume, Internal GTIN, Expiry, Lot and copies', () => {
-    expect(PRINT_LOG_HEADER).toEqual(['Date Time', 'Windows User', 'PC', 'Item Code', 'Pack Volume (mL)', 'Internal GTIN', 'Expiry', 'Lot', 'Copies'])
+  it('records date/time, Windows user, PC, Item Code, Pack Volume, Internal GTIN, Expiry, Lot, copies, then Kind GTIN', () => {
+    expect(PRINT_LOG_HEADER).toEqual([
+      'Date Time',
+      'Windows User',
+      'PC',
+      'Item Code',
+      'Pack Volume (mL)',
+      'Internal GTIN',
+      'Expiry',
+      'Lot',
+      'Copies',
+      'Kind',
+      'Template',
+      'Code data',
+      'Text'
+    ])
     expect(entry).toEqual({
       at,
       windowsUser: 'chantm',
@@ -31,9 +48,20 @@ describe('print log line', () => {
       internalGtin: '20425873440489',
       expiry: '2027-12-31',
       lot: '2512172-1',
-      copies: 3
+      copies: 3,
+      kind: 'GTIN',
+      template: '',
+      codeData: '',
+      text: ''
     })
-    expect(printLogLine(entry)).toBe('2026-10-19 14:03:07,chantm,PHARM-01,PARA18,60,20425873440489,2027-12-31,2512172-1,3\r\n')
+    expect(printLogLine(entry)).toBe('2026-10-19 14:03:07,chantm,PHARM-01,PARA18,60,20425873440489,2027-12-31,2512172-1,3,GTIN,,,\r\n')
+  })
+
+  it('records a Custom Label with Kind Custom, its Template, code data and text lines joined by " | ", and no GTIN fields', () => {
+    const custom = buildCustomLabel(LAYOUT_2, SMALL_LABEL, { symbology: 'qr', codeValue: 'Bin #4 (top)', texts: ['Bin 4', '', 'a+b', 'end'], copies: 2 })
+    if (!custom.ok) throw new Error(JSON.stringify(custom.errors))
+    const line = printLogLine(customPrintLogEntryFor(custom.label, { at, windowsUser: 'chantm', pcName: 'PHARM-01' }))
+    expect(line).toBe('2026-10-19 14:03:07,chantm,PHARM-01,,,,,,2,Custom,Layout 2,Bin #4 (top),Bin 4 |  | a+b | end\r\n')
   })
 
   it('leaves Pack Volume blank when none is encoded', () => {
@@ -44,7 +72,7 @@ describe('print log line', () => {
   it('keeps Item Codes with spaces or &, and Lots with / ( ), intact', () => {
     const label = labelFor({ itemCode: 'A&B 01', packVolumeDigit: 0, lot: '(B)A5/29-1' })
     const fields = parseCsvLine(printLogLine(printLogEntryFor(label, { at, windowsUser: 'o"brien, k', pcName: 'PHARM-01' })).trimEnd())
-    expect(fields).toEqual(['2026-10-19 14:03:07', 'o"brien, k', 'PHARM-01', 'A&B 01', '', label.internalGtin, '2027-12-31', '(B)A5/29-1', '3'])
+    expect(fields).toEqual(['2026-10-19 14:03:07', 'o"brien, k', 'PHARM-01', 'A&B 01', '', label.internalGtin, '2027-12-31', '(B)A5/29-1', '3', 'GTIN', '', '', ''])
   })
 
   it('names the file by month and PC', () => {

@@ -4,6 +4,7 @@ import { isStockOnhandForToday, type StockOnhandInfo } from '../../core/stockOnh
 import type { AppStartup } from '../../preload/api'
 import type { PcSettings } from '../../render/printSettings'
 import { AppHeader } from './AppHeader'
+import { CustomLabelScreen } from './CustomLabelScreen'
 import { ItemListPanel } from './ItemListImport'
 import { LabelScreen } from './LabelScreen'
 import { PrinterSettingsScreen } from './PrinterSettingsScreen'
@@ -169,12 +170,7 @@ function App(): React.JSX.Element {
         />
       </div>
       <div role="tabpanel" id="panel-custom" aria-labelledby="tab-custom" hidden={tab !== 'custom'}>
-        <main className="settings-layout">
-          <section className="panel settings">
-            <h2>Custom Label</h2>
-            <p className="settings__intro">Custom Labels arrive in this version.</p>
-          </section>
-        </main>
+        <CustomLabelScreen settings={settings} />
       </div>
       <div role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" hidden={tab !== 'settings'}>
         <PrinterSettingsScreen

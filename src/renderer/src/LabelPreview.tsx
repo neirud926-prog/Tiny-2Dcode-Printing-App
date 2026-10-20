@@ -22,11 +22,26 @@ interface LabelPreviewProps {
 /** The label at real proportions, and the self-check line saying what its data decodes to. */
 export function LabelPreview({ result, size = DEFAULT_LABEL_SIZE }: LabelPreviewProps): React.JSX.Element {
   const svg = useMemo(() => (result.ok ? renderLabelSvg(result.label, size) : null), [result, size])
-  const frameStyle = { width: `${size.widthMm * PREVIEW_SCALE}mm`, aspectRatio: `${size.widthMm} / ${size.heightMm}` }
 
   return (
     <section className="panel preview" aria-label="Label preview">
       <h2>Preview</h2>
+      <LabelFrame svg={svg} size={size} />
+      <SelfCheckLine result={result} />
+      {result.ok && (
+        <p className="gs1-data">
+          GS1 data <code>{result.label.hri}</code>
+        </p>
+      )}
+    </section>
+  )
+}
+
+/** A label SVG at real proportions, enlarged, with its size under it; a note while there is none. */
+export function LabelFrame({ svg, size }: { svg: string | null; size: LabelSize }): React.JSX.Element {
+  const frameStyle = { width: `${size.widthMm * PREVIEW_SCALE}mm`, aspectRatio: `${size.widthMm} / ${size.heightMm}` }
+  return (
+    <>
       <div className="label-frame" style={frameStyle}>
         {svg ? (
           // The SVG is built by our renderer from validated label data (no user markup reaches it).
@@ -38,13 +53,7 @@ export function LabelPreview({ result, size = DEFAULT_LABEL_SIZE }: LabelPreview
       <p className="preview-caption">
         {size.widthMm} × {size.heightMm} mm label, enlarged
       </p>
-      <SelfCheckLine result={result} />
-      {result.ok && (
-        <p className="gs1-data">
-          GS1 data <code>{result.label.hri}</code>
-        </p>
-      )}
-    </section>
+    </>
   )
 }
 

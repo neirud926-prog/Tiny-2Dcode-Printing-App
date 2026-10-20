@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { buildLabel, type LabelRequest } from '../core/label'
 import { DOT_MM } from './dataMatrix'
 import { renderLabelSvg } from './labelSvg'
-import { buildLabelPrintJob, htmlDataUrl, sampleLabelRequest } from './printJob'
-import type { PrintSettings } from './printSettings'
+import { LAYOUT_1 } from '../core/template'
+import { buildCustomLabel, renderCustomLabelSvg } from './customLabel'
+import { buildCustomLabelPrintJob, buildLabelPrintJob, htmlDataUrl, sampleLabelRequest } from './printJob'
+import { SMALL_LABEL, type PrintSettings } from './printSettings'
 
 const today = '2026-10-19'
 
@@ -62,6 +64,20 @@ describe('buildLabelPrintJob', () => {
   it('locks the page down: no scripts, nothing loaded from anywhere', () => {
     const { html } = buildLabelPrintJob(labelFor(), settings)
     expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`)
+    expect(html).not.toMatch(/<script/i)
+  })
+})
+
+describe('buildCustomLabelPrintJob', () => {
+  it('prints the Custom Label SVG on its size, with the offsets and copies, locked down like a GTIN Label', () => {
+    const built = buildCustomLabel(LAYOUT_1, SMALL_LABEL, { symbology: 'qr', codeValue: 'Bin #4', texts: ['Bin #4'], copies: 7 })
+    if (!built.ok) throw new Error(JSON.stringify(built.errors))
+    const { html, options } = buildCustomLabelPrintJob(built.label, settings)
+    expect(options).toMatchObject({ silent: true, deviceName: 'ZDesigner GX420t', pageSize: { width: 34_400, height: 25_000 }, copies: 7 })
+    expect(html).toContain('@page{size:34.4mm 25mm;margin:0}')
+    expect(html).toContain(`transform:translate(${(2 * DOT_MM).toFixed(4)}mm,${(-3 * DOT_MM).toFixed(4)}mm)`)
+    expect(html).toContain(renderCustomLabelSvg(built.label))
+    expect(html).toContain(`content="default-src 'none'; style-src 'unsafe-inline'"`)
     expect(html).not.toMatch(/<script/i)
   })
 })

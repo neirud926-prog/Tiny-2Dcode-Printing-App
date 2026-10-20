@@ -13,9 +13,11 @@ import { itemListProblems, lookupItem, type ItemIndex } from '../core/itemList'
 import { buildLabel, selfCheckLabel, type Label, type LabelRequest } from '../core/label'
 import { errorText } from '../data/atomicWrite'
 import { resolveLogFolder } from '../data/pcSettings'
-import { printLogEntryFor, type PrintLogEntry } from '../data/printLog'
-import { buildLabelPrintJob, sampleLabelRequest, type LabelPrintJob } from '../render/printJob'
-import { printSettingsFor, SMALL_LABEL, type PcSettings, type PrintSettings } from '../render/printSettings'
+import type { Template } from '../core/template'
+import { customPrintLogEntryFor, printLogEntryFor, type PrintLogEntry } from '../data/printLog'
+import { buildCustomLabel, templateSizeProblem, type CustomLabelRequest } from '../render/customLabel'
+import { buildCustomLabelPrintJob, buildLabelPrintJob, sampleLabelRequest, type LabelPrintJob } from '../render/printJob'
+import { printSettingsFor, SMALL_LABEL, type LabelSizeEntry, type PcSettings, type PrintSettings } from '../render/printSettings'
 import type { PrinterChoice, PrintOutcome } from '../preload/api'
 
 import type { DriverResult } from './host'
@@ -68,15 +70,50 @@ export async function printLabelRequest(
 
   const sent = await send(buildLabelPrintJob(label.label, printSettingsFor(settings, SMALL_LABEL)), deps)
   if (!sent.ok) return refused(sent.message)
+  return logged(printLogEntryFor(label.label, { ...context, at }), settings, context, deps)
+}
 
-  const { copies } = label.label
+/** After a print: adds its print log line and says what printed. */
+async function logged(entry: PrintLogEntry, settings: PcSettings, context: PrintContext, deps: PrintServiceDeps): Promise<PrintOutcome> {
+  const { copies } = entry
   const message = `Printed ${copies} label${copies === 1 ? '' : 's'} on ${settings.printerName}.`
   try {
-    await deps.appendLog(resolveLogFolder(context.dataFolder, settings), printLogEntryFor(label.label, { ...context, at }))
+    await deps.appendLog(resolveLogFolder(context.dataFolder, settings), entry)
     return { ok: true, message, warning: null }
   } catch (error) {
     return { ok: true, message, warning: `The print log could not be written: ${errorText(error)}` }
   }
+}
+
+/**
+ * Prints a Custom Label from one of `templates` on this PC's printer and adds one print log line.
+ * The label is rebuilt and checked here; the Template must be made for the Label Size loaded
+ * (`sizes` is the Label Size list), and prints with that size's offsets.
+ */
+export async function printCustomLabelRequest(
+  request: unknown,
+  settings: PcSettings | null,
+  sizes: readonly LabelSizeEntry[],
+  templates: readonly Template[],
+  context: PrintContext,
+  deps: PrintServiceDeps
+): Promise<PrintOutcome> {
+  if (settings === null) return refused("set up this PC's printer first.")
+  if (!isCustomLabelRequest(request)) return refused('the label request is not valid.')
+  const template = templates.find((entry) => entry.id === request.templateId)
+  if (!template) return refused('that template is no longer there.')
+  const sizeProblem = templateSizeProblem(template, settings.labelSizeId, sizes)
+  if (sizeProblem) return refused(sizeProblem)
+  const size = sizes.find((entry) => entry.id === settings.labelSizeId)
+  if (!size) return refused('the label size in this printer is no longer in the list. Change the label in Settings.')
+
+  const at = deps.now()
+  const built = buildCustomLabel(template, size, request)
+  if (!built.ok) return refused(built.errors.map((error) => error.message).join(' '))
+
+  const sent = await send(buildCustomLabelPrintJob(built.label, printSettingsFor(settings, size)), deps)
+  if (!sent.ok) return refused(sent.message)
+  return logged(customPrintLogEntryFor(built.label, { ...context, at }), settings, context, deps)
 }
 
 /**
@@ -124,6 +161,19 @@ async function send(job: LabelPrintJob, deps: Pick<PrintServiceDeps, 'sendToPrin
   } catch (error) {
     return { ok: false, message: errorText(error) }
   }
+}
+
+function isCustomLabelRequest(value: unknown): value is CustomLabelRequest {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.templateId === 'string' &&
+    (record.symbology === 'datamatrix' || record.symbology === 'qr') &&
+    typeof record.codeValue === 'string' &&
+    Array.isArray(record.texts) &&
+    record.texts.every((text) => typeof text === 'string') &&
+    typeof record.copies === 'number'
+  )
 }
 
 function isLabelRequest(value: unknown): value is LabelRequest {

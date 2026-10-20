@@ -7,6 +7,8 @@ import type { ItemListEntry, ItemListImportResult, ItemListInfo } from '../core/
 import type { LabelRequest } from '../core/label'
 import type { PendingLabelInput, PendingLabelView } from '../core/pendingLabel'
 import type { StockLot, StockOnhandImportResult, StockOnhandInfo } from '../core/stockOnhand'
+import type { Template } from '../core/template'
+import type { CustomLabelRequest } from '../render/customLabel'
 import type { LabelSizeEntry, PcSettings } from '../render/printSettings'
 
 /** What the app found at startup. */
@@ -94,6 +96,9 @@ export type SaveSettingsOutcome = { readonly ok: true; readonly settings: PcSett
 /** The Label Sizes, shared by every PC: the Small Label first, then those added. */
 export type LabelSizesList = { readonly ok: true; readonly sizes: readonly LabelSizeEntry[] } | { readonly ok: false; readonly message: string }
 
+/** The Templates: for now the built-in Layouts 1 and 2. */
+export type TemplatesList = { readonly ok: true; readonly templates: readonly Template[] } | { readonly ok: false; readonly message: string }
+
 /** A Label Size to add. */
 export interface NewLabelSize {
   readonly name: string
@@ -145,6 +150,14 @@ export interface PreloadApi {
   deletePendingLabel(id: string): Promise<DeletePendingOutcome>
   /** Deletes every expired Pending Label (Expiry before this PC's today) in one locked change. */
   deleteExpiredPendingLabels(): Promise<DeleteExpiredOutcome>
+  /** The Templates a Custom Label prints from (the built-in Layouts 1 and 2; stored ones come with the Templates ticket). */
+  listTemplates(): Promise<TemplatesList>
+  /**
+   * Rebuilds and checks the Custom Label for this request from its Template, refuses it unless the
+   * Template was made for the Label Size loaded in this PC's printer, prints it with that size's
+   * offsets, then adds a print log line (Kind Custom).
+   */
+  printCustomLabel(request: CustomLabelRequest): Promise<PrintOutcome>
   /** The Label Sizes (picking up sizes another PC added). */
   listLabelSizes(): Promise<LabelSizesList>
   /** Adds a Label Size to the shared list (name unique ignoring case); the list after. */

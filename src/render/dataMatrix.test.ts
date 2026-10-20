@@ -4,7 +4,7 @@ import { toBuffer } from 'bwip-js'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { prepareZXingModule, readBarcodes } from 'zxing-wasm/reader'
 import { buildLabel, decodeLabelData, type LabelRequest } from '../core/label'
-import { DOT_MM, MODULE_MM, dataMatrixOptions, renderDataMatrix } from './dataMatrix'
+import { DOT_MM, MODULE_MM, dataMatrixOptions, plainCodeOptions, renderDataMatrix, renderPlainCode } from './dataMatrix'
 
 const today = '2026-10-19'
 
@@ -114,6 +114,34 @@ describe('render round-trip: the printed symbol decodes to the label data', () =
     expect(decodeLabelData(normalise(result.text))).toMatchObject({
       ok: true,
       data: { internalGtin: label.internalGtin, itemCode: label.itemCode, expiryText: label.expiryText, lot: label.lot }
+    })
+  })
+
+  describe('plain codes: the printed DataMatrix or QR holds exactly the typed data', () => {
+    const values = ['SHELF-1C5A', 'a', 'Bin 4 # (top) + 2*3', 'ABCDEFGHIJabcdefghij0123456789 -_./:#()+', 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz']
+
+    it.each(values.flatMap((value) => [['DataMatrix', 'datamatrix', value] as const, ['QRCode', 'qr', value] as const]))(
+      '%s holds %j',
+      async (format, symbology, value) => {
+        const png = await toBuffer({ ...plainCodeOptions(symbology, value), scale: 4, padding: 8, backgroundcolor: 'FFFFFF' })
+        const results = await readBarcodes(new Uint8Array(png), { formats: [format], textMode: 'Plain' })
+        expect(results).toHaveLength(1)
+        expect(results[0].symbologyIdentifier).toBe(symbology === 'qr' ? ']Q1' : ']d1') // plain: no GS1 FNC1
+        expect(results[0].text).toBe(value)
+      }
+    )
+
+    it('are always the size that holds 40 characters (DataMatrix 26 × 26, QR version 3, 29 × 29), on whole printer dots', () => {
+      for (const value of ['a', values[3], values[4]]) {
+        const dm = renderPlainCode('datamatrix', value, 3)
+        expect([dm.columns, dm.rows]).toEqual([26, 26])
+        expect(dm.widthMm).toBeCloseTo(26 * 3 * DOT_MM, 12)
+        expect(dm.quietZoneMm).toBeCloseTo(3 * DOT_MM, 12)
+        const qr = renderPlainCode('qr', value, 5)
+        expect([qr.columns, qr.rows]).toEqual([29, 29])
+        expect(qr.widthMm).toBeCloseTo(29 * 5 * DOT_MM, 12)
+        expect(qr.quietZoneMm).toBeCloseTo(4 * 5 * DOT_MM, 12)
+      }
     })
   })
 })

@@ -7,6 +7,7 @@
  */
 
 import type { Label, LabelRequest } from '../core/label'
+import { renderCustomLabelSvg, type CustomLabel } from './customLabel'
 import { renderLabelSvg } from './labelSvg'
 import type { PrintSettings } from './printSettings'
 
@@ -34,6 +35,15 @@ const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'"
 
 /** The print job for `label` (its copies) on this PC's printer and label roll. */
 export function buildLabelPrintJob(label: Label, settings: PrintSettings): LabelPrintJob {
+  return printJobFor(renderLabelSvg(label, settings.labelSize), label.copies, settings)
+}
+
+/** The print job for a Custom Label (its copies) on this PC's printer, with the offsets for its size. */
+export function buildCustomLabelPrintJob(label: CustomLabel, settings: PrintSettings): LabelPrintJob {
+  return printJobFor(renderCustomLabelSvg(label), label.copies, settings)
+}
+
+function printJobFor(svg: string, copies: number, settings: PrintSettings): LabelPrintJob {
   const { widthMm, heightMm } = settings.labelSize
   const w = cssMm(widthMm)
   const h = cssMm(heightMm)
@@ -46,7 +56,7 @@ export function buildLabelPrintJob(label: Label, settings: PrintSettings): Label
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}">` +
     `<title>Label</title><style>${style}</style></head>` +
-    `<body><div class="label">${renderLabelSvg(label, settings.labelSize)}</div></body></html>`
+    `<body><div class="label">${svg}</div></body></html>`
 
   return {
     html,
@@ -57,7 +67,7 @@ export function buildLabelPrintJob(label: Label, settings: PrintSettings): Label
       margins: { marginType: 'none' },
       landscape: false,
       pageSize: { width: Math.round(widthMm * 1000), height: Math.round(heightMm * 1000) },
-      copies: label.copies,
+      copies,
       scaleFactor: 100
     }
   }

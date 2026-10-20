@@ -79,8 +79,8 @@ describe('printLabelRequest', () => {
     const lines = (await readFile(logFile, 'utf8')).trimEnd().split('\r\n')
     expect(lines).toEqual([
       PRINT_LOG_HEADER.join(','),
-      '2026-10-19 14:03:07,chantm,PHARM-01,PARA18,60,20425873440489,2027-12-31,2512172-1,3',
-      '2026-10-19 14:03:07,chantm,PHARM-01,PARA18,60,20425873440489,2027-12-31,2512172-1,1'
+      '2026-10-19 14:03:07,chantm,PHARM-01,PARA18,60,20425873440489,2027-12-31,2512172-1,3,GTIN,,,',
+      '2026-10-19 14:03:07,chantm,PHARM-01,PARA18,60,20425873440489,2027-12-31,2512172-1,1,GTIN,,,'
     ])
   })
 

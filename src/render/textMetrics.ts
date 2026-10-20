@@ -1,7 +1,7 @@
 /**
  * Advance widths for estimating how wide label text prints, without a DOM (the renderer also runs
  * in Node tests). Values are Helvetica / Helvetica-Bold AFM widths in 1/1000 em; Arial shares them.
- * Only characters that can appear on a label are listed; anything else counts as a full em, so an
+ * Only characters that can appear on a label (GTIN or Custom) are listed; anything else counts as a full em, so an
  * estimate errs wide and text is squeezed rather than cut off.
  */
 
@@ -40,7 +40,12 @@ const REGULAR: Readonly<Record<string, number>> = {
   X: 667,
   Y: 667,
   Z: 611,
-  m: 833
+  '_': 556,
+  ':': 278,
+  '#': 556,
+  '+': 584,
+  '*': 389,
+  ...widths('abcdefghijklmnopqrstuvwxyz', [556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500])
 }
 
 const BOLD: Readonly<Record<string, number>> = {
@@ -51,7 +56,8 @@ const BOLD: Readonly<Record<string, number>> = {
   J: 556,
   K: 722,
   L: 611,
-  m: 889
+  ':': 333,
+  ...widths('abcdefghijklmnopqrstuvwxyz', [556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500])
 }
 
 const UNKNOWN_CHARACTER_WIDTH = 1000
@@ -65,6 +71,10 @@ export function textWidthMm(text: string, fontSizePt: number, bold: boolean): nu
   let thousandths = 0
   for (const character of text) thousandths += widths[character] ?? UNKNOWN_CHARACTER_WIDTH
   return (thousandths / 1000) * fontSizePt * MM_PER_PT
+}
+
+function widths(characters: string, values: readonly number[]): Record<string, number> {
+  return Object.fromEntries([...characters].map((character, i) => [character, values[i]]))
 }
 
 function sameWidth(characters: string, width: number): Record<string, number> {

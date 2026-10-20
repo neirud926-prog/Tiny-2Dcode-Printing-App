@@ -122,7 +122,14 @@ export function layoutLabel(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE):
 /** The label as a self-contained SVG document, `widthMm` × `heightMm` in size. */
 export function renderLabelSvg(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE): string {
   const layout = layoutLabel(label, size)
-  const { symbol } = layout
+  return labelSvgDocument(size, layout.symbol, [layout.itemCodeLine, layout.expiryLine, layout.lotLine])
+}
+
+/**
+ * A label as one self-contained SVG: white, the symbol (on whole printer dots) and the text lines,
+ * all with presentation attributes, nothing loaded from outside. Shared by GTIN and Custom Labels.
+ */
+export function labelSvgDocument(size: LabelSize, symbol: DataMatrixSymbol & { readonly xMm: number; readonly yMm: number }, lines: readonly TextLine[]): string {
   const w = String(size.widthMm)
   const h = String(size.heightMm)
   return (
@@ -131,7 +138,7 @@ export function renderLabelSvg(label: Label, size: LabelSize = DEFAULT_LABEL_SIZ
     `<rect width="${w}" height="${h}" fill="white"/>` +
     `<svg x="${mm(symbol.xMm)}" y="${mm(symbol.yMm)}" width="${mm(symbol.widthMm)}" height="${mm(symbol.heightMm)}" ` +
     `viewBox="${symbol.viewBox}" shape-rendering="crispEdges">${symbol.markup}</svg>` +
-    [layout.itemCodeLine, layout.expiryLine, layout.lotLine].map(textLineSvg).join('') +
+    lines.map(textLineSvg).join('') +
     `</svg>`
   )
 }
@@ -151,11 +158,12 @@ function textLineSvg(line: TextLine): string {
   return `<text ${position}>${runs}</text>`
 }
 
-function run(text: string, fontSizePt: number, bold: boolean, gapBeforeMm = 0): TextRun {
+export function run(text: string, fontSizePt: number, bold: boolean, gapBeforeMm = 0): TextRun {
   return { text, fontSizePt, bold, gapBeforeMm }
 }
 
-function line(runs: TextRun[], xMm: number, baselineMm: number, maxWidthMm: number): TextLine {
+/** A line of text runs at `xMm`, squeezed across if wider than `maxWidthMm`. */
+export function line(runs: TextRun[], xMm: number, baselineMm: number, maxWidthMm: number): TextLine {
   const naturalWidth = runs.reduce((sum, r) => sum + r.gapBeforeMm + textWidthMm(r.text, r.fontSizePt, r.bold), 0)
   const widthMm = naturalWidth * WIDTH_SAFETY
   const largestPt = Math.max(...runs.map((r) => r.fontSizePt))
@@ -171,7 +179,7 @@ function line(runs: TextRun[], xMm: number, baselineMm: number, maxWidthMm: numb
   }
 }
 
-function capHeightMm(fontSizePt: number): number {
+export function capHeightMm(fontSizePt: number): number {
   return fontSizePt * MM_PER_PT * CAP_HEIGHT_EM
 }
 
@@ -179,7 +187,7 @@ function descentMm(fontSizePt: number): number {
   return fontSizePt * MM_PER_PT * DESCENT_EM
 }
 
-function snapToDot(mmValue: number): number {
+export function snapToDot(mmValue: number): number {
   return Math.round(mmValue / DOT_MM) * DOT_MM
 }
 

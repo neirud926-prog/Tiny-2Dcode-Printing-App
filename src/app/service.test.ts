@@ -1,7 +1,12 @@
+import { readdir, readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { LabelRequest } from '../core/label'
+import { LAYOUT_1, LAYOUT_2 } from '../core/template'
+import { linesOf, parseCsvLine } from '../data/csvTesting'
 import { tempFolder } from '../data/testFolder'
 import { DOT_MM } from '../render/dataMatrix'
+import type { CustomLabelRequest } from '../render/customLabel'
 import type { LabelPrintJob } from '../render/printJob'
 import { SMALL_LABEL, type PcSettings } from '../render/printSettings'
 import type { PreloadApi } from '../preload/api'
@@ -111,6 +116,59 @@ describe('the loaded Label Size', () => {
     expect(await api.printLabel(request)).toEqual({
       ok: false,
       message: 'Not printed: GTIN Labels print on the Small Label (34.4 × 25 mm). Change the label in Settings.'
+    })
+    expect(jobs).toHaveLength(0)
+  })
+})
+
+describe('Custom Labels', () => {
+  const custom: CustomLabelRequest = { templateId: LAYOUT_2.id, symbology: 'qr', codeValue: 'Bin #4 (top)', texts: ['Bin 4', '', 'top shelf', ''], copies: 2 }
+
+  async function setUp() {
+    const folder = await tempFolder()
+    const one = await pc(folder, 'PHARM-01')
+    expect((await one.api.savePrinterSettings(settingsFor(SMALL_LABEL.id, { [SMALL_LABEL.id]: { offsetXmm: 3 * DOT_MM, offsetYmm: 0 } }))).ok).toBe(true)
+    return { folder, ...one }
+  }
+
+  it('lists the built-in Layouts 1 and 2', async () => {
+    const { api } = await setUp()
+    expect(await api.listTemplates()).toEqual({ ok: true, templates: [LAYOUT_1, LAYOUT_2] })
+  })
+
+  it('print on the loaded Small Label with its offsets, and are logged as Custom', async () => {
+    const { folder, api, jobs } = await setUp()
+    expect(await api.printCustomLabel(custom)).toEqual({ ok: true, message: 'Printed 2 labels on ZDesigner GX420t.', warning: null })
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0].options).toMatchObject({ pageSize: { width: 34_400, height: 25_000 }, copies: 2 })
+    expect(jobs[0].html).toContain(`translate(${(3 * DOT_MM).toFixed(4)}mm,0.0000mm)`)
+    expect(jobs[0].html).toContain('>Bin 4</tspan>')
+    const [logName] = await readdir(join(folder, 'logs'))
+    const lines = linesOf(await readFile(join(folder, 'logs', logName), 'utf8'))
+    expect(lines[0].endsWith(',Copies,Kind,Template,Code data,Text')).toBe(true)
+    expect(parseCsvLine(lines[1]).slice(1)).toEqual(['chantm', 'PHARM-01', '', '', '', '', '', '2', 'Custom', 'Layout 2', 'Bin #4 (top)', 'Bin 4 |  | top shelf | '])
+  })
+
+  it('are rebuilt and checked before printing: what the screen would refuse never prints', async () => {
+    const { api, jobs } = await setUp()
+    expect(await api.printCustomLabel({ ...custom, texts: ['', 'WWWWWWWWWWWWWWWW', '', ''] })).toEqual({ ok: false, message: 'Not printed: Line 2 is too long for this template.' })
+    expect(await api.printCustomLabel({ ...custom, codeValue: 'a;b', copies: 0 })).toEqual({
+      ok: false,
+      message: 'Not printed: The code data may hold only A–Z, a–z, 0–9, space and - _ . / : # ( ) + *. Copies must be a whole number from 1 to 99.'
+    })
+    expect(await api.printCustomLabel({ ...custom, templateId: 'nope' })).toEqual({ ok: false, message: 'Not printed: that template is no longer there.' })
+    expect(await api.printCustomLabel({ ...custom, symbology: 'aztec' } as unknown as CustomLabelRequest)).toEqual({ ok: false, message: 'Not printed: the label request is not valid.' })
+    expect(await api.printCustomLabel({ ...custom, texts: [1, 2, 3, 4] } as unknown as CustomLabelRequest)).toEqual({ ok: false, message: 'Not printed: the label request is not valid.' })
+    expect(jobs).toHaveLength(0)
+  })
+
+  it('are refused when another Label Size is loaded, naming both', async () => {
+    const { api, jobs } = await setUp()
+    const shelf = await addSize(api, 'Shelf', 50, 30)
+    expect((await api.savePrinterSettings(settingsFor(shelf))).ok).toBe(true)
+    expect(await api.printCustomLabel(custom)).toEqual({
+      ok: false,
+      message: 'Not printed: This template was made for Small Label (34.4 × 25 mm); this PC prints Shelf (50 × 30 mm). Change the label in Settings.'
     })
     expect(jobs).toHaveLength(0)
   })
