@@ -1,19 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { PrinterChoice, PrintOutcome } from '../../preload/api'
+import type { LabelSizesList, PrinterChoice, PrintOutcome } from '../../preload/api'
 import { DOT_MM } from '../../render/dataMatrix'
 import {
   DEFAULT_PC_SETTINGS,
+  formatLabelSizeMm,
   MAX_OFFSET_MM,
+  normaliseLabelSize,
   normalisePcSettings,
   offsetInDots,
+  offsetsFor,
+  SMALL_LABEL,
   snapToPrinterDots,
+  type LabelSizeEntry,
+  type LabelSizeField,
   type PcSettings,
   type PcSettingsField
 } from '../../render/printSettings'
 import { AppHeader } from './AppHeader'
 import { OutcomeMessage } from './OutcomeMessage'
 
-type NumberField = 'widthMm' | 'heightMm' | 'offsetXmm' | 'offsetYmm'
+type OffsetField = 'offsetXmm' | 'offsetYmm'
+type OffsetTexts = Record<OffsetField, string>
 
 interface PrinterSettingsScreenProps {
   /** `setup`: the Setup step "Printer" on a PC with no settings. `settings`: changing them later. */
@@ -31,7 +38,7 @@ interface PrinterSettingsScreenProps {
 /** A label printer driver name is likely to contain one of these. */
 const LABEL_PRINTER_PATTERN = /zebra|zdesigner|gx420/i
 
-/** The Setup step "Printer" and the Settings screen: printer, label size, offsets, test print. */
+/** The Setup step "Printer" and the Settings tab: printer, the label loaded in it and its offsets, test print; Label Sizes in Settings. */
 export function PrinterSettingsScreen({
   mode,
   pcName,
@@ -43,7 +50,11 @@ export function PrinterSettingsScreen({
 }: PrinterSettingsScreenProps): React.JSX.Element {
   const [printers, setPrinters] = useState<PrinterChoice[] | null>(null)
   const [printerName, setPrinterName] = useState(initial.printerName)
-  const [numbers, setNumbers] = useState(() => numbersFrom(initial))
+  const [sizes, setSizes] = useState<readonly LabelSizeEntry[]>([SMALL_LABEL])
+  const [sizesMessage, setSizesMessage] = useState<string | null>(null)
+  const [labelSizeId, setLabelSizeId] = useState(initial.labelSizeId)
+  /** The offsets typed for each Label Size, kept while another size is chosen. */
+  const [offsetTexts, setOffsetTexts] = useState<Record<string, OffsetTexts>>(() => offsetTextsFrom(initial))
   const [logFolder, setLogFolder] = useState(initial.logFolder)
   const [touched, setTouched] = useState<ReadonlySet<PcSettingsField>>(new Set())
   const [busy, setBusy] = useState<'test' | 'save' | null>(null)
@@ -66,11 +77,24 @@ export function PrinterSettingsScreen({
     void loadPrinters()
   }, [loadPrinters])
 
+  useEffect(() => {
+    void window.api.listLabelSizes().then(showSizes, (error: unknown) => setSizesMessage(`The Label Sizes could not be read: ${String(error)}`))
+  }, [])
+
+  function showSizes(list: LabelSizesList): void {
+    if (list.ok) {
+      setSizes(list.sizes)
+      setSizesMessage(null)
+    } else setSizesMessage(list.message)
+  }
+
+  const texts = offsetTexts[labelSizeId] ?? offsetTextsOf(initial, labelSizeId)
   const candidate = {
     printerName,
-    labelSize: { widthMm: parseMm(numbers.widthMm), heightMm: parseMm(numbers.heightMm) },
-    offsetXmm: parseMm(numbers.offsetXmm),
-    offsetYmm: parseMm(numbers.offsetYmm),
+    labelSizeId,
+    offsets: Object.fromEntries(
+      Object.entries({ ...offsetTexts, [labelSizeId]: texts }).map(([id, typed]) => [id, { offsetXmm: parseMm(typed.offsetXmm), offsetYmm: parseMm(typed.offsetYmm) }])
+    ),
     logFolder
   }
   const validation = normalisePcSettings(candidate)
@@ -78,17 +102,26 @@ export function PrinterSettingsScreen({
     !validation.ok && touched.has(field) ? validation.errors.filter((error) => error.field === field).map((error) => error.message) : []
 
   const printerMissing = printers !== null && printerName !== '' && !printers.some((printer) => printer.name === printerName)
+  const sizeMissing = !sizes.some((size) => size.id === labelSizeId)
   const printerOptions = useMemo(
     () => (printerMissing ? [{ name: printerName, displayName: `${printerName} (not installed)` }, ...(printers ?? [])] : (printers ?? [])),
     [printerMissing, printerName, printers]
   )
 
   function touchAll(): void {
-    setTouched(new Set<PcSettingsField>(['printerName', 'widthMm', 'heightMm', 'offsetXmm', 'offsetYmm', 'logFolder']))
+    setTouched(new Set<PcSettingsField>(['printerName', 'labelSizeId', 'offsetXmm', 'offsetYmm', 'logFolder']))
   }
 
-  function changeNumber(field: NumberField, value: string): void {
-    setNumbers((previous) => ({ ...previous, [field]: value }))
+  function changeOffset(field: OffsetField, value: string): void {
+    setOffsetTexts((previous) => ({ ...previous, [labelSizeId]: { ...texts, [field]: value } }))
+    setOutcome(null)
+  }
+
+  /** Loads another size: its own offsets come back. Offsets left half-typed go back to the saved ones. */
+  function chooseSize(id: string): void {
+    const valid = (typed: string): boolean => Number.isFinite(parseMm(typed)) && Math.abs(parseMm(typed)) <= MAX_OFFSET_MM
+    if (!valid(texts.offsetXmm) || !valid(texts.offsetYmm)) setOffsetTexts((previous) => ({ ...previous, [labelSizeId]: offsetTextsOf(initial, labelSizeId) }))
+    setLabelSizeId(id)
     setOutcome(null)
   }
 
@@ -127,7 +160,8 @@ export function PrinterSettingsScreen({
   /** Settings tab: back to the saved settings. */
   function revert(): void {
     setPrinterName(initial.printerName)
-    setNumbers(numbersFrom(initial))
+    setLabelSizeId(initial.labelSizeId)
+    setOffsetTexts(offsetTextsFrom(initial))
     setLogFolder(initial.logFolder)
     setTouched(new Set())
     setOutcome(null)
@@ -143,8 +177,8 @@ export function PrinterSettingsScreen({
   }
 
   /** What an offset becomes once rounded to whole printer dots. */
-  function offsetConfirmation(field: 'offsetXmm' | 'offsetYmm'): string | null {
-    const typed = candidate[field]
+  function offsetConfirmation(field: OffsetField): string | null {
+    const typed = parseMm(texts[field])
     if (!Number.isFinite(typed) || Math.abs(typed) > MAX_OFFSET_MM) return null
     const value = snapToPrinterDots(typed)
     const dots = offsetInDots(value)
@@ -204,41 +238,59 @@ export function PrinterSettingsScreen({
             </div>
           </div>
 
-          <fieldset className="field-group">
-            <legend>Label size</legend>
-            <div className="field-row">
-              <NumberInput field="widthMm" label="Width" unit="mm" value={numbers.widthMm} errors={errorsFor('widthMm')} onChange={changeNumber} onBlur={touch} />
-              <NumberInput field="heightMm" label="Height" unit="mm" value={numbers.heightMm} errors={errorsFor('heightMm')} onChange={changeNumber} onBlur={touch} />
+          <div className="field">
+            <label htmlFor="labelSizeId">Label in this printer</label>
+            <div className="field__input">
+              <select
+                id="labelSizeId"
+                value={labelSizeId}
+                onChange={(event) => chooseSize(event.target.value)}
+                className={sizeMissing ? 'invalid' : undefined}
+              >
+                {sizeMissing && <option value={labelSizeId}>(no longer in the list)</option>}
+                {sizes.map((size) => (
+                  <option key={size.id} value={size.id}>
+                    {labelSizeText(size)}
+                  </option>
+                ))}
+              </select>
             </div>
-            <p className="message message--hint">Default 34.4 × 25 mm (Zebra GX420t roll).</p>
-          </fieldset>
+            <div className="field__messages" aria-live="polite">
+              {sizeMissing && <p className="message message--error">This label size is no longer in the list. Choose the label in this printer.</p>}
+              {!sizeMissing && labelSizeId !== SMALL_LABEL.id && (
+                <p className="message message--warning">GTIN Labels print only on the Small Label ({formatLabelSizeMm(SMALL_LABEL)}).</p>
+              )}
+              {mode === 'setup' && sizesMessage && <p className="message message--error">{sizesMessage}</p>}
+            </div>
+          </div>
 
           <fieldset className="field-group">
-            <legend>Offsets</legend>
+            <legend>Offsets for this label</legend>
             <div className="field-row">
               <NumberInput
                 field="offsetXmm"
                 label="X (right)"
                 unit="mm"
-                value={numbers.offsetXmm}
+                value={texts.offsetXmm}
                 errors={errorsFor('offsetXmm')}
                 confirmation={offsetConfirmation('offsetXmm')}
-                onChange={changeNumber}
+                onChange={changeOffset}
                 onBlur={touch}
               />
               <NumberInput
                 field="offsetYmm"
                 label="Y (down)"
                 unit="mm"
-                value={numbers.offsetYmm}
+                value={texts.offsetYmm}
                 errors={errorsFor('offsetYmm')}
                 confirmation={offsetConfirmation('offsetYmm')}
-                onChange={changeNumber}
+                onChange={changeOffset}
                 onBlur={touch}
               />
             </div>
             <p className="message message--hint">
-              Moves the print if it is off-centre on the label; negative moves left or up. Rounded to whole printer dots ({DOT_MM.toFixed(3)} mm).
+              Moves the print if it is off-centre on the label; negative moves left or up. Rounded to whole printer dots ({DOT_MM.toFixed(3)} mm). Kept
+              for each label size.
             </p>
           </fieldset>
 
@@ -277,6 +329,7 @@ export function PrinterSettingsScreen({
           </div>
           <OutcomeMessage outcome={outcome} />
         </section>
+        {mode === 'settings' && <LabelSizesPanel sizes={sizes} message={sizesMessage} onChanged={showSizes} />}
         {children}
       </main>
   )
@@ -295,38 +348,144 @@ export function PrinterSettingsScreen({
   }
 }
 
-interface NumberInputProps {
-  field: NumberField
+type NewSizeTexts = Record<LabelSizeField, string>
+const NO_NEW_SIZE: NewSizeTexts = { name: '', widthMm: '', heightMm: '' }
+
+/** The Label Sizes shared by every PC: the Small Label first, others added and deleted here. */
+function LabelSizesPanel({
+  sizes,
+  message,
+  onChanged
+}: {
+  sizes: readonly LabelSizeEntry[]
+  message: string | null
+  onChanged(list: LabelSizesList): void
+}): React.JSX.Element {
+  const [typed, setTyped] = useState<NewSizeTexts>(NO_NEW_SIZE)
+  const [tried, setTried] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [refused, setRefused] = useState<string | null>(null)
+
+  const checked = normaliseLabelSize({ name: typed.name, widthMm: parseMm(typed.widthMm), heightMm: parseMm(typed.heightMm) })
+  const errorsFor = (field: LabelSizeField): string[] =>
+    !checked.ok && tried ? checked.errors.filter((error) => error.field === field).map((error) => error.message) : []
+
+  async function run(change: () => Promise<LabelSizesList>): Promise<boolean> {
+    setBusy(true)
+    setRefused(null)
+    try {
+      const list = await change()
+      if (list.ok) onChanged(list)
+      else setRefused(list.message)
+      return list.ok
+    } catch (error) {
+      setRefused(String(error))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function add(): Promise<void> {
+    setTried(true)
+    if (!checked.ok) return
+    const size = checked.size
+    if (await run(() => window.api.addLabelSize(size))) {
+      setTyped(NO_NEW_SIZE)
+      setTried(false)
+    }
+  }
+
+  function change(field: LabelSizeField, value: string): void {
+    setTyped((previous) => ({ ...previous, [field]: value }))
+    setRefused(null)
+  }
+
+  return (
+    <section className="panel settings" aria-label="Label Sizes">
+      <h2>Label Sizes</h2>
+      <p className="settings__intro">Label rolls, shared by every PC. The Small Label is built in.</p>
+      {message && <p className="message message--error">{message}</p>}
+      <ul className="label-sizes">
+        {sizes.map((size) => (
+          <li key={size.id} className="label-sizes__row">
+            <span>
+              <strong>{size.name}</strong> <span className="field__note">{formatLabelSizeMm(size)}</span>
+            </span>
+            {size.id === SMALL_LABEL.id ? (
+              <span className="field__note">built in</span>
+            ) : (
+              <button type="button" className="button button--secondary button--small" disabled={busy} onClick={() => void run(() => window.api.deleteLabelSize(size.id))}>
+                Delete
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <fieldset className="field-group">
+        <legend>Add a label size</legend>
+        <div className="field">
+          <label htmlFor="newSizeName">Name</label>
+          <div className="field__input">
+            <input id="newSizeName" value={typed.name} autoComplete="off" onChange={(event) => change('name', event.target.value)} />
+          </div>
+          <div className="field__messages" aria-live="polite">
+            {errorsFor('name').map((text) => (
+              <p key={text} className="message message--error">
+                {text}
+              </p>
+            ))}
+          </div>
+        </div>
+        <div className="field-row">
+          <NumberInput field="widthMm" id="newSizeWidth" label="Width" unit="mm" value={typed.widthMm} errors={errorsFor('widthMm')} onChange={change} onBlur={() => undefined} />
+          <NumberInput field="heightMm" id="newSizeHeight" label="Height" unit="mm" value={typed.heightMm} errors={errorsFor('heightMm')} onChange={change} onBlur={() => undefined} />
+        </div>
+      </fieldset>
+      <div className="actions">
+        <button type="button" className="button button--secondary" disabled={busy} onClick={() => void add()}>
+          Add
+        </button>
+      </div>
+      {refused && <p className="message message--error" role="alert">{refused}</p>}
+    </section>
+  )
+}
+
+interface NumberInputProps<F extends string> {
+  field: F
+  /** The input's element id; the field name if not given. */
+  id?: string
   label: string
   unit: string
   value: string
   errors: string[]
   confirmation?: string | null
-  onChange(field: NumberField, value: string): void
-  onBlur(field: NumberField): void
+  onChange(field: F, value: string): void
+  onBlur(field: F): void
 }
 
-function NumberInput({ field, label, unit, value, errors, confirmation, onChange, onBlur }: NumberInputProps): React.JSX.Element {
+function NumberInput<F extends string>({ field, id = field, label, unit, value, errors, confirmation, onChange, onBlur }: NumberInputProps<F>): React.JSX.Element {
   const invalid = errors.length > 0
   return (
     <div className="field field--number">
-      <label htmlFor={field}>{label}</label>
+      <label htmlFor={id}>{label}</label>
       <div className="field__input">
         <input
-          id={field}
+          id={id}
           className={invalid ? 'number invalid' : 'number'}
           inputMode="decimal"
           autoComplete="off"
           spellCheck={false}
           value={value}
           aria-invalid={invalid}
-          aria-describedby={`${field}-messages`}
+          aria-describedby={`${id}-messages`}
           onChange={(event) => onChange(field, event.target.value)}
           onBlur={() => onBlur(field)}
         />
         <span className="field__unit">{unit}</span>
       </div>
-      <div id={`${field}-messages`} className="field__messages" aria-live="polite">
+      <div id={`${id}-messages`} className="field__messages" aria-live="polite">
         {!invalid && confirmation && <p className="message message--hint">{confirmation}</p>}
         {errors.map((message) => (
           <p key={message} className="message message--error">
@@ -344,13 +503,18 @@ function parseMm(value: string): number {
   return /^[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$/.test(trimmed) ? Number(trimmed) : Number.NaN
 }
 
-function numbersFrom(settings: PcSettings): Record<NumberField, string> {
-  return {
-    widthMm: String(settings.labelSize.widthMm),
-    heightMm: String(settings.labelSize.heightMm),
-    offsetXmm: formatMm(settings.offsetXmm),
-    offsetYmm: formatMm(settings.offsetYmm)
-  }
+function offsetTextsOf(settings: PcSettings, labelSizeId: string): OffsetTexts {
+  const offsets = offsetsFor(settings, labelSizeId)
+  return { offsetXmm: formatMm(offsets.offsetXmm), offsetYmm: formatMm(offsets.offsetYmm) }
+}
+
+function offsetTextsFrom(settings: PcSettings): Record<string, OffsetTexts> {
+  return Object.fromEntries(Object.keys(settings.offsets).map((id) => [id, offsetTextsOf(settings, id)]))
+}
+
+/** e.g. `Small Label (34.4 × 25 mm)`. */
+function labelSizeText(size: LabelSizeEntry): string {
+  return `${size.name} (${formatLabelSizeMm(size)})`
 }
 
 function formatMm(value: number): string {

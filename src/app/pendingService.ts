@@ -11,7 +11,7 @@ import { isExpired, pendingLabelRequest, viewPendingLabels, type PendingLabelInp
 import { addPending, changePending, defaultPendingDeps, readPending, removePending, restorePending } from '../data/pendingStore'
 import type { DeleteExpiredOutcome, DeletePendingOutcome, PendingLabelsList, PrintOutcome, SavePendingOutcome } from '../preload/api'
 import type { PcSettings } from '../render/printSettings'
-import { printLabelRequest, type PrintContext, type PrintServiceDeps } from './printService'
+import { gtinLabelSizeProblem, printLabelRequest, type PrintContext, type PrintServiceDeps } from './printService'
 
 /** Lists the Pending Labels against the Item List in use (null if none) and `today` (`yyyy-mm-dd`): the recheck after every import. */
 export async function listPendingLabels(dataFolder: string, itemList: ItemIndex | null, today: string): Promise<PendingLabelsList> {
@@ -59,6 +59,8 @@ export async function printPendingLabel(
   if (typeof id !== 'string') return refused('the request is not valid.')
   if (packVolumeDigit !== null && packVolumeDigit !== undefined && typeof packVolumeDigit !== 'number') return refused('the request is not valid.')
   if (settings === null) return refused("set up this PC's printer first.")
+  const sizeProblem = gtinLabelSizeProblem(settings)
+  if (sizeProblem) return refused(sizeProblem)
   if (itemList === null) return refused('import the Item List first.')
 
   const read = await readPending(context.dataFolder)

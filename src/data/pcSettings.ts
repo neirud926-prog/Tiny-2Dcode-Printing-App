@@ -1,9 +1,11 @@
 /**
- * Per-PC settings, sealed, in `pcs/<PC name>.dat`: each PC keeps its own printer, label size,
- * offsets and log folder, while the rest of the data folder is shared.
+ * Per-PC settings, sealed, in `pcs/<PC name>.dat`: each PC keeps its own printer, the Label Size
+ * loaded in it, offsets per Label Size and log folder, while the rest of the data folder is shared.
+ * Settings saved by v0.2 (one label size and one pair of offsets) are upgraded when loaded.
  */
 
-import { normalisePcSettings, type PcSettings } from '../render/printSettings'
+import { isRecord, normalisePcSettings, sizeMm, type PcSettings } from '../render/printSettings'
+import { ensureLabelSize } from './labelSizeStore'
 import { platform } from './platform'
 import { readSealed, writeSealed } from './sealed'
 
@@ -46,6 +48,7 @@ export async function loadPcSettings(dataFolder: string, pcName: string): Promis
     case 'unreadable':
       return { status: 'unreadable', message: `This PC's printer settings could not be used: ${read.message}` }
     case 'ok': {
+      if (isRecord(read.value) && 'labelSize' in read.value) return upgrade(dataFolder, pcName, read.value)
       const normalised = normalisePcSettings(read.value)
       if (normalised.ok) return { status: 'ok', settings: normalised.settings }
       return { status: 'unreadable', message: `This PC's printer settings (${file}) are not valid settings.` }
@@ -59,4 +62,25 @@ export async function savePcSettings(dataFolder: string, pcName: string, setting
   if (!normalised.ok) throw new Error(normalised.errors.map((error) => error.message).join(' '))
   await writeSealed(pcSettingsPath(dataFolder, pcName), normalised.settings)
   return normalised.settings
+}
+
+/**
+ * v0.2 settings: a 34.4 × 25 mm label becomes the Small Label; another size is added to the shared
+ * list as "W × H mm" (or an existing size with those dimensions is used) and loaded. The offsets go
+ * with the size, and the settings are saved in the new format.
+ */
+async function upgrade(dataFolder: string, pcName: string, old: Record<string, unknown>): Promise<LoadPcSettingsResult> {
+  const notValid: LoadPcSettingsResult = { status: 'unreadable', message: `This PC's printer settings (${pcName}.dat) are not valid settings.` }
+  const size = isRecord(old.labelSize) ? old.labelSize : {}
+  const widthMm = sizeMm(size.widthMm)
+  const heightMm = sizeMm(size.heightMm)
+  if (widthMm === null || heightMm === null) return notValid
+  const ensured = await ensureLabelSize(dataFolder, { widthMm, heightMm })
+  if (!ensured.ok) return { status: 'unreadable', message: `This PC's printer settings could not be upgraded: ${ensured.message}` }
+  const id = ensured.value.id
+  const normalised = normalisePcSettings({ ...old, labelSizeId: id, offsets: { [id]: { offsetXmm: old.offsetXmm, offsetYmm: old.offsetYmm } } })
+  if (!normalised.ok) return notValid
+  // Not saved now is upgraded again next time, to the same size.
+  await writeSealed(pcSettingsPath(dataFolder, pcName), normalised.settings).catch(() => undefined)
+  return { status: 'ok', settings: normalised.settings }
 }

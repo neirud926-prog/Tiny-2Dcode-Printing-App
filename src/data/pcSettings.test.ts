@@ -2,18 +2,27 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DOT_MM } from '../render/dataMatrix'
-import type { PcSettings } from '../render/printSettings'
+import { SMALL_LABEL, type PcSettings } from '../render/printSettings'
+import { readLabelSizes } from './labelSizeStore'
 import { defaultLogFolder, loadPcSettings, pcNameFromHostname, pcSettingsPath, resolveLogFolder, savePcSettings } from './pcSettings'
 import { writeSealed } from './sealed'
 import { tempFolder } from './testFolder'
 
 const settings: PcSettings = {
   printerName: 'ZDesigner GX420t',
-  labelSize: { widthMm: 34.4, heightMm: 25 },
-  offsetXmm: 2 * DOT_MM,
-  offsetYmm: 0,
+  labelSizeId: SMALL_LABEL.id,
+  offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 } },
   logFolder: null
 }
+
+/** Settings as v0.2 saved them: one label size and one pair of offsets. */
+const legacy = (widthMm: number, heightMm: number) => ({
+  printerName: 'ZDesigner GX420t',
+  labelSize: { widthMm, heightMm },
+  offsetXmm: 2 * DOT_MM,
+  offsetYmm: -DOT_MM,
+  logFolder: null
+})
 
 describe('pcNameFromHostname', () => {
   it('upper-cases the host name and drops any domain', () => {
@@ -47,11 +56,11 @@ describe('per-PC settings', () => {
 
   it('snap offsets to whole printer dots when saved', async () => {
     const root = await tempFolder()
-    await savePcSettings(root, 'PHARM-01', { ...settings, offsetXmm: 0.3, offsetYmm: -0.2 })
+    await savePcSettings(root, 'PHARM-01', { ...settings, offsets: { [SMALL_LABEL.id]: { offsetXmm: 0.3, offsetYmm: -0.2 } } })
     const loaded = await loadPcSettings(root, 'PHARM-01')
     if (loaded.status !== 'ok') throw new Error(loaded.status)
-    expect(loaded.settings.offsetXmm / DOT_MM).toBeCloseTo(2, 9)
-    expect(loaded.settings.offsetYmm / DOT_MM).toBeCloseTo(-2, 9)
+    expect(loaded.settings.offsets[SMALL_LABEL.id].offsetXmm / DOT_MM).toBeCloseTo(2, 9)
+    expect(loaded.settings.offsets[SMALL_LABEL.id].offsetYmm / DOT_MM).toBeCloseTo(-2, 9)
   })
 
   it('refuse settings that are not valid', async () => {
@@ -76,6 +85,37 @@ describe('per-PC settings', () => {
     await writeSealed(pcSettingsPath(root, 'PHARM-01'), { items: [] })
     const loaded = await loadPcSettings(root, 'PHARM-01')
     expect(loaded.status).toBe('unreadable')
+  })
+})
+
+describe('upgrading v0.2 settings', () => {
+  it('loads the Small Label, with its offsets, for a saved 34.4 × 25 mm label', async () => {
+    const root = await tempFolder()
+    await writeSealed(pcSettingsPath(root, 'PHARM-01'), legacy(34.4, 25))
+    expect(await loadPcSettings(root, 'PHARM-01')).toEqual({
+      status: 'ok',
+      settings: { printerName: 'ZDesigner GX420t', labelSizeId: SMALL_LABEL.id, offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: -DOT_MM } }, logFolder: null }
+    })
+    expect(await readLabelSizes(root)).toEqual({ ok: true, sizes: [SMALL_LABEL] })
+  })
+
+  it('adds another saved size to the shared list as "W × H mm", reused by the next PC, and loads it with its offsets', async () => {
+    const root = await tempFolder()
+    await writeSealed(pcSettingsPath(root, 'PHARM-01'), legacy(50, 30))
+    await writeSealed(pcSettingsPath(root, 'PHARM-02'), legacy(50, 30))
+    const first = await loadPcSettings(root, 'PHARM-01')
+    const second = await loadPcSettings(root, 'PHARM-02')
+    const sizes = await readLabelSizes(root)
+    if (first.status !== 'ok' || second.status !== 'ok' || !sizes.ok) throw new Error('expected settings and sizes')
+    expect(sizes.sizes.map((size) => [size.name, size.widthMm, size.heightMm])).toEqual([
+      ['Small Label', 34.4, 25],
+      ['50 × 30 mm', 50, 30]
+    ])
+    const added = sizes.sizes[1].id
+    expect(first.settings).toEqual({ printerName: 'ZDesigner GX420t', labelSizeId: added, offsets: { [added]: { offsetXmm: 2 * DOT_MM, offsetYmm: -DOT_MM } }, logFolder: null })
+    expect(second.settings.labelSizeId).toBe(added)
+    // Saved in the new format: loading again changes nothing.
+    expect(await loadPcSettings(root, 'PHARM-01')).toEqual(first)
   })
 })
 

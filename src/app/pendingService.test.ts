@@ -8,11 +8,11 @@ import { appendPrintLog, PRINT_LOG_HEADER } from '../data/printLog'
 import { tempFolder } from '../data/testFolder'
 import { DOT_MM } from '../render/dataMatrix'
 import type { LabelPrintJob } from '../render/printJob'
-import type { PcSettings } from '../render/printSettings'
+import { SMALL_LABEL, type PcSettings } from '../render/printSettings'
 import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
 import type { DriverResult, PrintServiceDeps } from './printService'
 
-const settings: PcSettings = { printerName: 'ZDesigner GX420t', labelSize: { widthMm: 30, heightMm: 20 }, offsetXmm: 2 * DOT_MM, offsetYmm: 0, logFolder: null }
+const settings: PcSettings = { printerName: 'ZDesigner GX420t', labelSizeId: SMALL_LABEL.id, offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 } }, logFolder: null }
 
 const before = indexItems([{ itemCode: 'PARA01', name: 'SYNTHETIC FICTAMOL TABLET 500MG', baseUnit: 'TAB' }])
 const after = indexItems([
@@ -95,6 +95,18 @@ describe('Pending Labels', () => {
     expect(log[1]).toContain('2512172-1')
 
     expect(await listPendingLabels(dataFolder, after, today)).toEqual({ ok: true, labels: [] })
+  })
+
+  it('keeps a Pending Label unprinted unless the Small Label is loaded', async () => {
+    const { dataFolder, context, deps, jobs } = await setup()
+    await savePendingLabel(tablet, context, deps)
+    const { id } = await firstPending(dataFolder, after)
+    expect(await printPendingLabel(id, null, { ...settings, labelSizeId: 'other' }, after, context, deps)).toEqual({
+      ok: false,
+      message: 'Not printed: GTIN Labels print on the Small Label (34.4 × 25 mm). Change the label in Settings.'
+    })
+    expect(jobs).toHaveLength(0)
+    expect((await firstPending(dataFolder, after)).id).toBe(id)
   })
 
   it('does not print a Pending Label twice', async () => {

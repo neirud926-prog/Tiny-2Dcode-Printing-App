@@ -7,7 +7,7 @@ import type { ItemListEntry, ItemListImportResult, ItemListInfo } from '../core/
 import type { LabelRequest } from '../core/label'
 import type { PendingLabelInput, PendingLabelView } from '../core/pendingLabel'
 import type { StockLot, StockOnhandImportResult, StockOnhandInfo } from '../core/stockOnhand'
-import type { PcSettings } from '../render/printSettings'
+import type { LabelSizeEntry, PcSettings } from '../render/printSettings'
 
 /** What the app found at startup. */
 export type AppStartup =
@@ -91,6 +91,16 @@ export type DeleteExpiredOutcome = { readonly ok: true; readonly deleted: number
 
 export type SaveSettingsOutcome = { readonly ok: true; readonly settings: PcSettings } | { readonly ok: false; readonly message: string }
 
+/** The Label Sizes, shared by every PC: the Small Label first, then those added. */
+export type LabelSizesList = { readonly ok: true; readonly sizes: readonly LabelSizeEntry[] } | { readonly ok: false; readonly message: string }
+
+/** A Label Size to add. */
+export interface NewLabelSize {
+  readonly name: string
+  readonly widthMm: number
+  readonly heightMm: number
+}
+
 export interface PreloadApi {
   /** Checks the data folder can be written and loads this PC's settings and the Item List. */
   getStartup(): Promise<AppStartup>
@@ -112,7 +122,7 @@ export interface PreloadApi {
   listPrinters(): Promise<PrinterChoice[]>
   /** Lets staff pick a log folder in the system dialog; null if cancelled. */
   chooseLogFolder(): Promise<string | null>
-  /** Prints one sample label (TEST01, Lot TEST) with these settings, without saving them. Not logged. */
+  /** Prints one sample label (TEST01, Lot TEST) on the loaded Label Size with its offsets, without saving the settings. Not logged. */
   testPrint(settings: PcSettings): Promise<PrintOutcome>
   savePrinterSettings(settings: PcSettings): Promise<SaveSettingsOutcome>
   /**
@@ -135,4 +145,10 @@ export interface PreloadApi {
   deletePendingLabel(id: string): Promise<DeletePendingOutcome>
   /** Deletes every expired Pending Label (Expiry before this PC's today) in one locked change. */
   deleteExpiredPendingLabels(): Promise<DeleteExpiredOutcome>
+  /** The Label Sizes (picking up sizes another PC added). */
+  listLabelSizes(): Promise<LabelSizesList>
+  /** Adds a Label Size to the shared list (name unique ignoring case); the list after. */
+  addLabelSize(size: NewLabelSize): Promise<LabelSizesList>
+  /** Deletes an added Label Size, unless it is the Small Label, used by a Template or loaded in this PC's printer; the list after. */
+  deleteLabelSize(id: string): Promise<LabelSizesList>
 }

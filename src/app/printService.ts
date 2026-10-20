@@ -15,7 +15,7 @@ import { errorText } from '../data/atomicWrite'
 import { resolveLogFolder } from '../data/pcSettings'
 import { printLogEntryFor, type PrintLogEntry } from '../data/printLog'
 import { buildLabelPrintJob, sampleLabelRequest, type LabelPrintJob } from '../render/printJob'
-import type { PcSettings, PrintSettings } from '../render/printSettings'
+import { printSettingsFor, SMALL_LABEL, type PcSettings, type PrintSettings } from '../render/printSettings'
 import type { PrinterChoice, PrintOutcome } from '../preload/api'
 
 import type { DriverResult } from './host'
@@ -27,6 +27,14 @@ export interface PrintServiceDeps {
   /** Prints the job silently; resolves with the driver's result. */
   sendToPrinter(job: LabelPrintJob): Promise<DriverResult>
   appendLog(logFolder: string, entry: PrintLogEntry): Promise<unknown>
+}
+
+/** Why a GTIN Label is refused when another Label Size is loaded. */
+export const GTIN_NEEDS_SMALL_LABEL = 'GTIN Labels print on the Small Label (34.4 × 25 mm). Change the label in Settings.'
+
+/** GTIN Labels print only when the Small Label is loaded in this PC's printer. */
+export function gtinLabelSizeProblem(settings: PcSettings): string | null {
+  return settings.labelSizeId === SMALL_LABEL.id ? null : GTIN_NEEDS_SMALL_LABEL
 }
 
 export interface PrintContext {
@@ -47,6 +55,8 @@ export async function printLabelRequest(
   deps: PrintServiceDeps
 ): Promise<PrintOutcome> {
   if (settings === null) return refused("set up this PC's printer first.")
+  const sizeProblem = gtinLabelSizeProblem(settings)
+  if (sizeProblem) return refused(sizeProblem)
   if (itemList === null) return refused('import the Item List first.')
   if (!isLabelRequest(request)) return refused('the label request is not valid.')
 
@@ -56,7 +66,7 @@ export async function printLabelRequest(
   const problems = itemListProblems(lookupItem(itemList, label.label.itemCode), label.label)
   if (problems.length > 0) return refused(problems.map((problem) => problem.message).join(' '))
 
-  const sent = await send(buildLabelPrintJob(label.label, settings), deps)
+  const sent = await send(buildLabelPrintJob(label.label, printSettingsFor(settings, SMALL_LABEL)), deps)
   if (!sent.ok) return refused(sent.message)
 
   const { copies } = label.label
@@ -70,8 +80,8 @@ export async function printLabelRequest(
 }
 
 /**
- * Prints one sample label (Item Code TEST01, Lot TEST) so staff can check the printer, label size
- * and offsets before saving. Test prints carry no real Lot, so they are not written to the print log.
+ * Prints one sample label (Item Code TEST01, Lot TEST) on the loaded Label Size with its offsets,
+ * so staff can check the printer and offsets before saving. Test prints carry no real Lot, so they are not written to the print log.
  */
 export async function printTestLabel(settings: PrintSettings, deps: Pick<PrintServiceDeps, 'now' | 'sendToPrinter'>): Promise<PrintOutcome> {
   const today = localIsoDate(deps.now())

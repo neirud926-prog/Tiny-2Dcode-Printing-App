@@ -9,6 +9,7 @@ import { localIsoDate } from '../core/expiry'
 import { errorText } from '../data/atomicWrite'
 import { checkDataFolder, checkFolderWritable } from '../data/dataFolder'
 import { createItemListSource } from '../data/itemListStore'
+import { addLabelSize, deleteLabelSize, isLabelSizeInUse, readLabelSizes } from '../data/labelSizeStore'
 import { defaultLogFolder, loadPcSettings, resolveLogFolder, savePcSettings } from '../data/pcSettings'
 import { appendPrintLog } from '../data/printLog'
 import { createStockOnhandSource } from '../data/stockOnhandStore'
@@ -19,6 +20,7 @@ import type {
   ImportItemListOutcome,
   ImportStockOnhandOutcome,
   ItemLookup,
+  LabelSizesList,
   PendingLabelsList,
   PreloadApi,
   PrintOutcome,
@@ -26,7 +28,7 @@ import type {
   SaveSettingsOutcome,
   StockLotsLookup
 } from '../preload/api'
-import { normalisePcSettings, type PcSettings } from '../render/printSettings'
+import { normalisePcSettings, printSettingsFor, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import type { AppHost } from './host'
 import { itemLookupFor, stockLotsLookupFor } from './itemLookup'
 import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
@@ -78,7 +80,28 @@ export function createAppService(host: AppHost): PreloadApi {
     deleteExpiredPendingLabels: () =>
       folderReady
         ? deleteExpiredPendingLabels(dataFolder, localIsoDate(deps.now()))
-        : Promise.resolve<DeleteExpiredOutcome>({ ok: false, message: 'The data folder is not ready.' })
+        : Promise.resolve<DeleteExpiredOutcome>({ ok: false, message: 'The data folder is not ready.' }),
+    listLabelSizes: () => (folderReady ? readLabelSizes(dataFolder) : notReady()),
+    addLabelSize: async (size) => {
+      if (!folderReady) return notReady()
+      const added = await addLabelSize(dataFolder, size)
+      return added.ok ? readLabelSizes(dataFolder) : added
+    },
+    deleteLabelSize: async (id) => {
+      if (!folderReady) return notReady()
+      if (typeof id !== 'string') return { ok: false, message: 'The request is not valid.' }
+      if (settings?.labelSizeId === id) {
+        const sizes = await readLabelSizes(dataFolder)
+        const name = sizes.ok ? sizes.sizes.find((size) => size.id === id)?.name : undefined
+        return { ok: false, message: `The label size "${name ?? id}" is loaded in this printer. Change the label in Settings first.` }
+      }
+      const deleted = await deleteLabelSize(dataFolder, id, (sizeId) => isLabelSizeInUse(dataFolder, sizeId))
+      return deleted.ok ? readLabelSizes(dataFolder) : deleted
+    }
+  }
+
+  function notReady(): Promise<LabelSizesList> {
+    return Promise.resolve({ ok: false, message: 'The data folder is not ready.' })
   }
 
   async function getStartup(): Promise<AppStartup> {
@@ -163,7 +186,7 @@ export function createAppService(host: AppHost): PreloadApi {
   async function testPrint(input: unknown): Promise<PrintOutcome> {
     const checked = await checkSettings(input)
     if (!checked.ok) return { ok: false, message: `Test print failed: ${checked.message}` }
-    return exclusively(() => printTestLabel(checked.settings, deps))
+    return exclusively(() => printTestLabel(printSettingsFor(checked.settings, checked.size), deps))
   }
 
   async function savePrinterSettings(input: unknown): Promise<SaveSettingsOutcome> {
@@ -201,11 +224,16 @@ export function createAppService(host: AppHost): PreloadApi {
     }
   }
 
-  async function checkSettings(input: unknown): Promise<{ ok: true; settings: PcSettings } | { ok: false; message: string }> {
+  /** Checks settings, that their printer is installed and their Label Size is in the list (which it returns). */
+  async function checkSettings(input: unknown): Promise<{ ok: true; settings: PcSettings; size: LabelSizeEntry } | { ok: false; message: string }> {
     const normalised = normalisePcSettings(input)
     if (!normalised.ok) return { ok: false, message: normalised.errors.map((error) => error.message).join(' ') }
     const problem = printerProblem(normalised.settings.printerName, await host.listPrinters())
     if (problem) return { ok: false, message: problem }
-    return normalised
+    const sizes = await readLabelSizes(dataFolder)
+    if (!sizes.ok) return sizes
+    const size = sizes.sizes.find((entry) => entry.id === normalised.settings.labelSizeId)
+    if (!size) return { ok: false, message: 'That label size is no longer in the list. Choose the label in this printer.' }
+    return { ok: true, settings: normalised.settings, size }
   }
 }

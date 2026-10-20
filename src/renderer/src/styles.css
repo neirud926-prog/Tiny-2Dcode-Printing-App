@@ -928,3 +928,23 @@ p {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+
+.label-sizes {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.label-sizes__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+.label-sizes__row + .label-sizes__row {
+  border-top: 1px solid var(--border);
+}

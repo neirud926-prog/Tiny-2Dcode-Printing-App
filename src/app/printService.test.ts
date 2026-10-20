@@ -7,18 +7,20 @@ import { appendPrintLog, PRINT_LOG_HEADER } from '../data/printLog'
 import { tempFolder } from '../data/testFolder'
 import { DOT_MM } from '../render/dataMatrix'
 import type { LabelPrintJob } from '../render/printJob'
-import type { PcSettings } from '../render/printSettings'
+import { SMALL_LABEL, type PcSettings, type PrintSettings } from '../render/printSettings'
 import { printLabelRequest, printTestLabel, printerProblem, type DriverResult, type PrintServiceDeps } from './printService'
 
 const request: LabelRequest = { itemCode: 'para18', packVolumeDigit: 2, expiry: '31122027', lot: '2512172-1', copies: 3 }
 
 const settings: PcSettings = {
   printerName: 'ZDesigner GX420t',
-  labelSize: { widthMm: 30, heightMm: 20 },
-  offsetXmm: 2 * DOT_MM,
-  offsetYmm: 0,
+  labelSizeId: SMALL_LABEL.id,
+  offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 }, other: { offsetXmm: 0, offsetYmm: 0 } },
   logFolder: null
 }
+
+/** What Test print is given: the loaded size and its offsets. */
+const testSettings: PrintSettings = { printerName: 'ZDesigner GX420t', labelSize: { widthMm: 30, heightMm: 20 }, offsetXmm: 2 * DOT_MM, offsetYmm: 0 }
 
 const itemList = indexItems([
   { itemCode: 'PARA01', name: 'SYNTHETIC FICTAMOL TABLET 500MG', baseUnit: 'TAB' },
@@ -47,7 +49,7 @@ async function setup(driver: DriverResult | Error = { ok: true }) {
 }
 
 describe('printLabelRequest', () => {
-  it('prints on the configured printer, page size and copies', async () => {
+  it('prints on the configured printer, on the Small Label with its offsets, and copies', async () => {
     const { jobs, deps, context } = await setup()
     const outcome = await printLabelRequest(request, settings, itemList, context, deps)
     expect(outcome).toEqual({ ok: true, message: 'Printed 3 labels on ZDesigner GX420t.', warning: null })
@@ -55,11 +57,19 @@ describe('printLabelRequest', () => {
     expect(jobs[0].options).toMatchObject({
       silent: true,
       deviceName: 'ZDesigner GX420t',
-      pageSize: { width: 30_000, height: 20_000 },
+      pageSize: { width: 34_400, height: 25_000 },
       copies: 3,
       margins: { marginType: 'none' }
     })
-    expect(jobs[0].html).toContain('@page{size:30mm 20mm;margin:0}')
+    expect(jobs[0].html).toContain('@page{size:34.4mm 25mm;margin:0}')
+  })
+
+  it('refuses a GTIN Label unless the Small Label is loaded', async () => {
+    const { jobs, deps, context, logFile } = await setup()
+    const outcome = await printLabelRequest(request, { ...settings, labelSizeId: 'other' }, itemList, context, deps)
+    expect(outcome).toEqual({ ok: false, message: 'Not printed: GTIN Labels print on the Small Label (34.4 × 25 mm). Change the label in Settings.' })
+    expect(jobs).toHaveLength(0)
+    await expect(readFile(logFile)).rejects.toThrow(/ENOENT/)
   })
 
   it('adds exactly one print log line per print, with the label fields', async () => {
@@ -184,7 +194,7 @@ describe('printLabelRequest', () => {
 describe('printTestLabel', () => {
   it('prints one TEST01 sample label with the given settings and logs nothing', async () => {
     const { jobs, deps, logFile } = await setup()
-    const outcome = await printTestLabel(settings, deps)
+    const outcome = await printTestLabel(testSettings, deps)
     expect(outcome).toEqual({
       ok: true,
       message: 'Test label sent to ZDesigner GX420t. If it is not centred on the label, adjust the offsets.',
@@ -199,7 +209,7 @@ describe('printTestLabel', () => {
 
   it("reports the driver's reason", async () => {
     const { deps } = await setup({ ok: false, reason: 'Invalid printer settings' })
-    expect(await printTestLabel(settings, deps)).toEqual({ ok: false, message: 'Test print failed: the printer reported "Invalid printer settings".' })
+    expect(await printTestLabel(testSettings, deps)).toEqual({ ok: false, message: 'Test print failed: the printer reported "Invalid printer settings".' })
   })
 })
 

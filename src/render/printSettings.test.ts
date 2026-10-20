@@ -1,21 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { DOT_MM } from './dataMatrix'
-import { DEFAULT_LABEL_SIZE } from './labelSvg'
 import {
   DEFAULT_PC_SETTINGS,
   LABEL_SIZE_LIMITS_MM,
   MAX_OFFSET_MM,
+  normaliseLabelSize,
   normalisePcSettings,
   offsetInDots,
+  offsetsFor,
+  printSettingsFor,
+  SMALL_LABEL,
   snapToPrinterDots,
   type PcSettings
 } from './printSettings'
 
 const valid: PcSettings = {
   printerName: 'ZDesigner GX420t',
-  labelSize: { widthMm: 34.4, heightMm: 25 },
-  offsetXmm: 0,
-  offsetYmm: 0,
+  labelSizeId: SMALL_LABEL.id,
+  offsets: { [SMALL_LABEL.id]: { offsetXmm: 0, offsetYmm: 0 } },
   logFolder: null
 }
 
@@ -46,14 +48,12 @@ describe('snapToPrinterDots', () => {
 })
 
 describe('normalisePcSettings', () => {
-  it('defaults to a 34.4 × 25 mm label, no offsets and the default log folder', () => {
-    expect(DEFAULT_PC_SETTINGS).toEqual({
-      printerName: '',
-      labelSize: DEFAULT_LABEL_SIZE,
-      offsetXmm: 0,
-      offsetYmm: 0,
-      logFolder: null
-    })
+  const small = SMALL_LABEL.id
+  const offsetsOf = (offsetXmm: unknown, offsetYmm: unknown) => ({ [small]: { offsetXmm, offsetYmm } })
+
+  it('defaults to the Small Label, no offsets and the default log folder', () => {
+    expect(DEFAULT_PC_SETTINGS).toEqual({ printerName: '', labelSizeId: 'small-label', offsets: {}, logFolder: null })
+    expect(offsetsFor(DEFAULT_PC_SETTINGS, small)).toEqual({ offsetXmm: 0, offsetYmm: 0 })
   })
 
   it('accepts valid settings unchanged', () => {
@@ -61,17 +61,15 @@ describe('normalisePcSettings', () => {
   })
 
   it('snaps offsets to whole printer dots, so modules stay exactly 4 dots', () => {
-    const result = normalisePcSettings({ ...valid, offsetXmm: 0.3, offsetYmm: -0.5 })
+    const result = normalisePcSettings({ ...valid, offsets: offsetsOf(0.3, -0.5) })
     if (!result.ok) throw new Error(JSON.stringify(result.errors))
-    expect(result.settings.offsetXmm).toBeCloseTo(2 * DOT_MM, 12)
-    expect(result.settings.offsetYmm).toBeCloseTo(-4 * DOT_MM, 12)
+    expect(result.settings.offsets[small].offsetXmm).toBeCloseTo(2 * DOT_MM, 12)
+    expect(result.settings.offsets[small].offsetYmm).toBeCloseTo(-4 * DOT_MM, 12)
   })
 
-  it('rounds label sizes to 0.01 mm and trims the printer name', () => {
-    const result = normalisePcSettings({ ...valid, printerName: '  ZDesigner GX420t ', labelSize: { widthMm: 34.40000001, heightMm: 25.004 } })
-    if (!result.ok) throw new Error(JSON.stringify(result.errors))
-    expect(result.settings.printerName).toBe('ZDesigner GX420t')
-    expect(result.settings.labelSize).toEqual({ widthMm: 34.4, heightMm: 25 })
+  it('trims the printer name', () => {
+    const result = normalisePcSettings({ ...valid, printerName: '  ZDesigner GX420t ' })
+    expect(result.ok && result.settings.printerName).toBe('ZDesigner GX420t')
   })
 
   it('keeps a chosen log folder', () => {
@@ -79,26 +77,48 @@ describe('normalisePcSettings', () => {
     expect(result.ok && result.settings.logFolder).toBe('S:\\Pharmacy\\Label logs')
   })
 
-  it('requires a printer', () => {
+  it('requires a printer and a loaded Label Size', () => {
     expect(errorFields({ ...valid, printerName: '' })).toEqual(['printerName'])
     expect(errorFields({ ...valid, printerName: '   ' })).toEqual(['printerName'])
+    expect(errorFields({ ...valid, labelSizeId: '' })).toEqual(['labelSizeId'])
   })
 
-  it(`refuses a label size outside ${LABEL_SIZE_LIMITS_MM.min}–${LABEL_SIZE_LIMITS_MM.max} mm`, () => {
-    expect(errorFields({ ...valid, labelSize: { widthMm: LABEL_SIZE_LIMITS_MM.min - 1, heightMm: 25 } })).toEqual(['widthMm'])
-    expect(errorFields({ ...valid, labelSize: { widthMm: 34.4, heightMm: LABEL_SIZE_LIMITS_MM.max + 1 } })).toEqual(['heightMm'])
-    expect(errorFields({ ...valid, labelSize: { widthMm: Number.NaN, heightMm: Number.POSITIVE_INFINITY } })).toEqual(['widthMm', 'heightMm'])
-  })
-
-  it(`refuses an offset beyond ±${MAX_OFFSET_MM} mm`, () => {
-    expect(errorFields({ ...valid, offsetXmm: MAX_OFFSET_MM + 0.5 })).toEqual(['offsetXmm'])
-    expect(errorFields({ ...valid, offsetYmm: -MAX_OFFSET_MM - 0.5 })).toEqual(['offsetYmm'])
+  it(`refuses an offset beyond ±${MAX_OFFSET_MM} mm, for any size`, () => {
+    expect(errorFields({ ...valid, offsets: offsetsOf(MAX_OFFSET_MM + 0.5, 0) })).toEqual(['offsetXmm'])
+    expect(errorFields({ ...valid, offsets: { ...valid.offsets, other: { offsetXmm: 0, offsetYmm: -MAX_OFFSET_MM - 0.5 } } })).toEqual(['offsetYmm'])
   })
 
   it('refuses anything that is not settings', () => {
-    expect(errorFields(null)).toEqual(['printerName', 'widthMm', 'heightMm', 'offsetXmm', 'offsetYmm', 'logFolder'])
-    expect(errorFields({ ...valid, offsetXmm: '1' })).toEqual(['offsetXmm'])
+    expect(errorFields(null)).toEqual(['printerName', 'labelSizeId', 'offsetXmm', 'logFolder'])
+    expect(errorFields({ ...valid, offsets: offsetsOf('1', 0) })).toEqual(['offsetXmm'])
     expect(errorFields({ ...valid, logFolder: 42 })).toEqual(['logFolder'])
     expect(errorFields({ ...valid, logFolder: '' })).toEqual(['logFolder'])
+  })
+})
+
+describe('normaliseLabelSize', () => {
+  it('trims the name and rounds the size to 0.01 mm', () => {
+    expect(normaliseLabelSize({ name: ' Shelf ', widthMm: 50.004, heightMm: 30 })).toEqual({ ok: true, size: { name: 'Shelf', widthMm: 50, heightMm: 30 } })
+  })
+
+  it(`refuses a size outside ${LABEL_SIZE_LIMITS_MM.min}–${LABEL_SIZE_LIMITS_MM.max} mm and a missing or long name`, () => {
+    const fields = (input: unknown) => {
+      const result = normaliseLabelSize(input)
+      return result.ok ? [] : result.errors.map((error) => error.field)
+    }
+    expect(fields({ name: 'A', widthMm: LABEL_SIZE_LIMITS_MM.min - 1, heightMm: 25 })).toEqual(['widthMm'])
+    expect(fields({ name: 'A', widthMm: 34.4, heightMm: LABEL_SIZE_LIMITS_MM.max + 1 })).toEqual(['heightMm'])
+    expect(fields({ name: 'A', widthMm: Number.NaN, heightMm: Number.POSITIVE_INFINITY })).toEqual(['widthMm', 'heightMm'])
+    expect(fields({ name: 'x'.repeat(41), widthMm: 50, heightMm: 30 })).toEqual(['name'])
+    expect(fields(null)).toEqual(['name', 'widthMm', 'heightMm'])
+  })
+})
+
+describe('printSettingsFor', () => {
+  it('gives a print job the size and that size\'s offsets', () => {
+    const shelf = { id: 'shelf', name: 'Shelf', widthMm: 50, heightMm: 30 }
+    const settings = { ...valid, offsets: { ...valid.offsets, shelf: { offsetXmm: DOT_MM, offsetYmm: 0 } } }
+    expect(printSettingsFor(settings, shelf)).toEqual({ printerName: valid.printerName, labelSize: { widthMm: 50, heightMm: 30 }, offsetXmm: DOT_MM, offsetYmm: 0 })
+    expect(printSettingsFor(settings, SMALL_LABEL)).toEqual({ printerName: valid.printerName, labelSize: { widthMm: 34.4, heightMm: 25 }, offsetXmm: 0, offsetYmm: 0 })
   })
 })

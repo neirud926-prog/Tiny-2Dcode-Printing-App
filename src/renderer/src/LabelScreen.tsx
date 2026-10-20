@@ -8,7 +8,7 @@ import { lotPicker, type LotChoice } from '../../core/lotPicker'
 import { itemCodeFromScan, type ScanSource } from '../../core/scanInput'
 import { isStockOnhandForToday, type StockLot, type StockOnhandInfo } from '../../core/stockOnhand'
 import type { ItemLookup, PrintOutcome } from '../../preload/api'
-import type { PcSettings } from '../../render/printSettings'
+import { SMALL_LABEL } from '../../render/printSettings'
 import { LabelPreview } from './LabelPreview'
 import { LotPicker, type LotPickerView } from './LotPicker'
 import { OutcomeMessage } from './OutcomeMessage'
@@ -72,7 +72,6 @@ function isWellFormedItemCode(itemCode: string): boolean {
 }
 
 interface LabelScreenProps {
-  settings: PcSettings
   itemList: ItemListInfo
   /** A newer Item List is in use (imported from the dialog, or by another PC). */
   onItemListChanged(info: ItemListInfo): void
@@ -88,7 +87,6 @@ interface LabelScreenProps {
 
 /** The label screen: the form on the left, the live preview and self-check on the right. */
 export function LabelScreen({
-  settings,
   itemList,
   onItemListChanged,
   stockOnhand,
@@ -586,7 +584,7 @@ export function LabelScreen({
           <OutcomeMessage outcome={outcome} />
         </section>
 
-        <LabelPreview result={result} size={settings.labelSize} />
+        <LabelPreview result={result} size={SMALL_LABEL} />
       </main>
 
       {unknownDialogFor !== null && (

@@ -160,7 +160,6 @@ function App(): React.JSX.Element {
 
       <div role="tabpanel" id="panel-gtin" aria-labelledby="tab-gtin" hidden={tab !== 'gtin'}>
         <LabelScreen
-          settings={settings}
           itemList={itemList}
           onItemListChanged={setItemList}
           stockOnhand={stockOnhand}
