@@ -10,6 +10,7 @@ import { errorText } from './atomicWrite'
 import { defaultLockDeps, withFileLock, type LockDeps } from './fileLock'
 import { platform } from './platform'
 import { readSealed, writeSealed } from './sealed'
+import { readTemplates } from './templateStore'
 
 export const LABEL_SIZES_FILE_NAME = 'labelsizes.dat'
 export const LABEL_SIZES_LOCK_NAME = 'labelsizes.lock'
@@ -23,11 +24,12 @@ export function labelSizesLockPath(dataFolder: string): string {
 }
 
 /**
- * Whether a Template uses the Label Size, so it cannot be deleted.
- * shortcut: always false until Templates exist; the Templates ticket fills this in.
+ * Whether a stored Template is made for the Label Size, so it cannot be deleted. Templates that
+ * cannot be read count as using every size, so none is deleted from under them.
  */
-export async function isLabelSizeInUse(_dataFolder: string, _id: string): Promise<boolean> {
-  return false
+export async function isLabelSizeInUse(dataFolder: string, id: string): Promise<boolean> {
+  const read = await readTemplates(dataFolder)
+  return !read.ok || read.templates.some((template) => template.labelSizeId === id)
 }
 
 export type LabelSizesRead = { ok: true; sizes: LabelSizeEntry[] } | { ok: false; message: string }

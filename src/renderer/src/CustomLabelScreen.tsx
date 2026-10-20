@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BUILT_IN_TEMPLATES, MAX_CODE_LENGTH, PLAIN_CHARACTERS_TEXT, type Symbology, type Template } from '../../core/template'
-import type { PrintOutcome } from '../../preload/api'
+import { BUILT_IN_TEMPLATES, MAX_CODE_LENGTH, MAX_TEMPLATE_NAME_LENGTH, PLAIN_CHARACTERS_TEXT, type Symbology, type Template } from '../../core/template'
+import type { PrintOutcome, TemplateChangeOutcome } from '../../preload/api'
 import {
   buildCustomLabel,
   renderCustomLabelSvg,
   templateSizeProblem,
+  textMaxLength,
   type BuildCustomLabelResult,
   type CustomLabelField,
   type CustomLabelRequest
@@ -13,6 +14,7 @@ import { formatLabelSizeMm, SMALL_LABEL, type LabelSizeEntry, type PcSettings } 
 import { Field } from './LabelScreen'
 import { LabelFrame } from './LabelPreview'
 import { OutcomeMessage } from './OutcomeMessage'
+import { newTemplate, TemplateDesigner } from './TemplateDesigner'
 
 const SYMBOLOGIES: readonly { value: Symbology; label: string }[] = [
   { value: 'datamatrix', label: 'DataMatrix' },
@@ -49,14 +51,41 @@ export function CustomLabelScreen({ settings }: CustomLabelScreenProps): React.J
   const [outcome, setOutcome] = useState<PrintOutcome | null>(null)
   const form = useRef<HTMLElement | null>(null)
 
+  /** The designer, open on this Template (a new one has id `''`). */
+  const [designing, setDesigning] = useState<Template | null>(null)
+  /** The Template dialog open: New (choose a Label Size), Copy, Rename or Delete. */
+  const [action, setAction] = useState<TemplateAction | null>(null)
+  const [templatesMessage, setTemplatesMessage] = useState<string | null>(null)
+
+  async function refreshLists(): Promise<void> {
+    const [list, sizeList] = await Promise.all([window.api.listTemplates(), window.api.listLabelSizes()])
+    if (list.ok) setTemplates(list.templates)
+    setTemplatesMessage(list.ok ? null : list.message)
+    if (sizeList.ok) setSizes(sizeList.sizes)
+  }
+
   useEffect(() => {
     let current = true
-    void window.api.listTemplates().then((list) => current && list.ok && setTemplates(list.templates))
+    void window.api.listTemplates().then((list) => {
+      if (!current) return
+      if (list.ok) setTemplates(list.templates)
+      setTemplatesMessage(list.ok ? null : list.message)
+    })
     void window.api.listLabelSizes().then((list) => current && list.ok && setSizes(list.sizes))
     return () => {
       current = false
     }
   }, [settings.labelSizeId])
+
+  /** After a Template change: the new list, and the Template changed selected. */
+  function templatesChanged(outcome: Extract<TemplateChangeOutcome, { ok: true }>): void {
+    setTemplates(outcome.templates)
+    if (outcome.template) setTemplateId(outcome.template.id)
+    setTemplatesMessage(outcome.warning)
+    setAction(null)
+    setDesigning(null)
+    changed()
+  }
 
   const template = templates.find((entry) => entry.id === templateId) ?? templates[0]
   const size = sizes.find((entry) => entry.id === template.labelSizeId) ?? SMALL_LABEL
@@ -122,6 +151,11 @@ export function CustomLabelScreen({ settings }: CustomLabelScreenProps): React.J
   const codeErrors = errorsFor('code', codeValue)
   const copiesErrors = errorsFor('copies', copies)
 
+  if (designing) {
+    const designSize = sizes.find((entry) => entry.id === designing.labelSizeId) ?? SMALL_LABEL
+    return <TemplateDesigner initial={designing} size={designSize} templates={templates} onSaved={templatesChanged} onCancel={() => setDesigning(null)} />
+  }
+
   return (
     <main className="layout">
       <section className="panel form" aria-label="Custom Label details" ref={form}>
@@ -151,6 +185,31 @@ export function CustomLabelScreen({ settings }: CustomLabelScreenProps): React.J
                 {message}
               </p>
             ))}
+            {templatesMessage && <p className="message message--warning">{templatesMessage}</p>}
+          </div>
+          <div className="template-actions">
+            <button
+              type="button"
+              className="button button--secondary button--small"
+              onClick={() => {
+                void refreshLists()
+                setAction('new')
+              }}
+            >
+              New template
+            </button>
+            <button type="button" className="button button--secondary button--small" onClick={() => setAction('copy')}>
+              Copy
+            </button>
+            <button type="button" className="button button--secondary button--small" disabled={template.builtIn} onClick={() => setDesigning(template)}>
+              Edit
+            </button>
+            <button type="button" className="button button--secondary button--small" disabled={template.builtIn} onClick={() => setAction('rename')}>
+              Rename
+            </button>
+            <button type="button" className="button button--secondary button--small" disabled={template.builtIn} onClick={() => setAction('delete')}>
+              Delete
+            </button>
           </div>
         </div>
 
@@ -206,7 +265,7 @@ export function CustomLabelScreen({ settings }: CustomLabelScreenProps): React.J
               label={`Line ${index + 1}`}
               field={`custom-${field}`}
               errors={errors}
-              hint={text.maxLength === undefined ? 'May be empty' : `Up to ${text.maxLength}; may be empty`}
+              hint={`Up to ${textMaxLength(text)}; may be empty`}
             >
               <input
                 id={`custom-${field}`}
@@ -280,7 +339,137 @@ export function CustomLabelScreen({ settings }: CustomLabelScreenProps): React.J
           </p>
         )}
       </section>
+      {action && (
+        <TemplateActionDialog
+          action={action}
+          template={template}
+          sizes={sizes}
+          onDone={templatesChanged}
+          onDesign={(size) => {
+            setAction(null)
+            setDesigning(newTemplate(size))
+          }}
+          onClose={() => setAction(null)}
+        />
+      )}
     </main>
+  )
+}
+
+type TemplateAction = 'new' | 'copy' | 'rename' | 'delete'
+
+/** New: choose the Label Size to design for. Copy and Rename: the name. Delete: confirm. */
+function TemplateActionDialog({
+  action,
+  template,
+  sizes,
+  onDone,
+  onDesign,
+  onClose
+}: {
+  action: TemplateAction
+  template: Template
+  sizes: readonly LabelSizeEntry[]
+  onDone(outcome: Extract<TemplateChangeOutcome, { ok: true }>): void
+  onDesign(size: LabelSizeEntry): void
+  onClose(): void
+}): React.JSX.Element {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const [name, setName] = useState(action === 'copy' ? `Copy of ${template.name}`.slice(0, MAX_TEMPLATE_NAME_LENGTH) : template.name)
+  const [sizeId, setSizeId] = useState(template.labelSizeId)
+  const [busy, setBusy] = useState(false)
+  const [refused, setRefused] = useState<string | null>(null)
+
+  useEffect(() => {
+    const element = dialog.current
+    if (element && !element.open) element.showModal()
+    return () => element?.close()
+  }, [])
+
+  async function confirm(): Promise<void> {
+    if (action === 'new') {
+      const size = sizes.find((entry) => entry.id === sizeId)
+      if (size) onDesign(size)
+      return
+    }
+    setBusy(true)
+    setRefused(null)
+    try {
+      const outcome =
+        action === 'copy' ? await window.api.copyTemplate(template.id, name)
+        : action === 'rename' ? await window.api.renameTemplate(template.id, name)
+        : await window.api.deleteTemplate(template.id)
+      if (outcome.ok) onDone(outcome)
+      else setRefused(outcome.message)
+    } catch (error) {
+      setRefused(String(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const titles: Record<TemplateAction, string> = {
+    new: 'New template',
+    copy: `Copy ${template.name}`,
+    rename: `Rename ${template.name}`,
+    delete: `Delete ${template.name}?`
+  }
+  const buttons: Record<TemplateAction, string> = { new: 'Design', copy: 'Copy', rename: 'Rename', delete: 'Delete' }
+  return (
+    <dialog
+      ref={dialog}
+      className="dialog"
+      aria-labelledby="template-action-title"
+      onCancel={(event) => {
+        event.preventDefault()
+        if (!busy) onClose()
+      }}
+    >
+      <form
+        method="dialog"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void confirm()
+        }}
+      >
+        <h2 id="template-action-title" className="dialog__title">
+          {titles[action]}
+        </h2>
+        {action === 'new' && (
+          <div className="field">
+            <label htmlFor="template-size">Label Size</label>
+            <select id="template-size" value={sizeId} onChange={(event) => setSizeId(event.target.value)}>
+              {sizes.map((size) => (
+                <option key={size.id} value={size.id}>
+                  {size.name} ({formatLabelSizeMm(size)})
+                </option>
+              ))}
+            </select>
+            <p className="message message--hint">A template prints only on the Label Size it is made for.</p>
+          </div>
+        )}
+        {(action === 'copy' || action === 'rename') && (
+          <div className="field">
+            <label htmlFor="template-new-name">Name</label>
+            <input id="template-new-name" type="text" value={name} maxLength={MAX_TEMPLATE_NAME_LENGTH} autoComplete="off" autoFocus onChange={(event) => setName(event.target.value)} />
+          </div>
+        )}
+        {action === 'delete' && <p>The template is deleted for every PC. This cannot be undone.</p>}
+        {refused && (
+          <p className="message message--error dialog__still" role="alert">
+            {refused}
+          </p>
+        )}
+        <div className="dialog__footer template-actions">
+          <button type="button" className="button button--secondary" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="button button--primary" disabled={busy}>
+            {buttons[action]}
+          </button>
+        </div>
+      </form>
+    </dialog>
   )
 }
 

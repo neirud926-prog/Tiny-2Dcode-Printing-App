@@ -6,7 +6,6 @@
  * and never sends markup.
  */
 import { localIsoDate } from '../core/expiry'
-import { BUILT_IN_TEMPLATES } from '../core/template'
 import { errorText } from '../data/atomicWrite'
 import { checkDataFolder, checkFolderWritable } from '../data/dataFolder'
 import { createItemListSource } from '../data/itemListStore'
@@ -21,20 +20,26 @@ import type {
   ImportItemListOutcome,
   ImportStockOnhandOutcome,
   ItemLookup,
-  LabelSizesList,
   PendingLabelsList,
   PreloadApi,
   PrintOutcome,
   SavePendingOutcome,
   SaveSettingsOutcome,
-  StockLotsLookup,
-  TemplatesList
+  StockLotsLookup
 } from '../preload/api'
 import { normalisePcSettings, printSettingsFor, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import type { AppHost } from './host'
 import { itemLookupFor, stockLotsLookupFor } from './itemLookup'
 import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
 import { printCustomLabelRequest, printerProblem, printLabelRequest, printTestLabel, type PrintContext, type PrintServiceDeps } from './printService'
+import {
+  copyTemplateRequest,
+  deleteTemplateRequest,
+  listTemplates,
+  renameTemplateRequest,
+  saveTemplateRequest,
+  type TemplateContext
+} from './templateService'
 
 /**
  * The API for one app window. The arguments are typed as the renderer sends them, but are checked
@@ -53,6 +58,7 @@ export function createAppService(host: AppHost): PreloadApi {
   /** Log folders the renderer may save: the current one and any chosen in the dialog. */
   const allowedLogFolders = new Set<string>()
   let printing = false
+  const templateContext: TemplateContext = { dataFolder, pcName, windowsUser: host.windowsUser, logFolder: currentLogFolder, now: deps.now }
 
   return {
     getStartup,
@@ -83,13 +89,19 @@ export function createAppService(host: AppHost): PreloadApi {
       folderReady
         ? deleteExpiredPendingLabels(dataFolder, localIsoDate(deps.now()))
         : Promise.resolve<DeleteExpiredOutcome>({ ok: false, message: 'The data folder is not ready.' }),
-    listTemplates: () => Promise.resolve<TemplatesList>({ ok: true, templates: [...BUILT_IN_TEMPLATES] }),
+    listTemplates: () => (folderReady ? listTemplates(dataFolder) : notReady()),
+    saveTemplate: (template) => (folderReady ? saveTemplateRequest(template, templateContext) : notReady()),
+    renameTemplate: (id, name) => (folderReady ? renameTemplateRequest(id, name, templateContext) : notReady()),
+    copyTemplate: (id, name) => (folderReady ? copyTemplateRequest(id, name, templateContext) : notReady()),
+    deleteTemplate: (id) => (folderReady ? deleteTemplateRequest(id, templateContext) : notReady()),
     printCustomLabel: (request) =>
       exclusively(async () => {
         if (!folderReady) return { ok: false, message: 'Not printed: the data folder is not ready.' }
         const sizes = await readLabelSizes(dataFolder)
         if (!sizes.ok) return { ok: false, message: `Not printed: ${sizes.message}` }
-        return printCustomLabelRequest(request, settings, sizes.sizes, BUILT_IN_TEMPLATES, context, deps)
+        const templates = await listTemplates(dataFolder)
+        if (!templates.ok) return { ok: false, message: `Not printed: ${templates.message}` }
+        return printCustomLabelRequest(request, settings, sizes.sizes, templates.templates, context, deps)
       }),
     listLabelSizes: () => (folderReady ? readLabelSizes(dataFolder) : notReady()),
     addLabelSize: async (size) => {
@@ -110,7 +122,7 @@ export function createAppService(host: AppHost): PreloadApi {
     }
   }
 
-  function notReady(): Promise<LabelSizesList> {
+  function notReady(): Promise<{ ok: false; message: string }> {
     return Promise.resolve({ ok: false, message: 'The data folder is not ready.' })
   }
 

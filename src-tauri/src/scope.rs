@@ -101,7 +101,7 @@ fn is_probe(name: &str) -> bool {
     })
 }
 
-/// `print-log-YYYY-MM-<PC>.csv`, `import-log-YYYY-MM-<PC>.csv` or the write probe.
+/// `print-log-`, `import-log-` or `template-log-YYYY-MM-<PC>.csv`, or the write probe.
 fn is_log_or_probe(name: &str) -> bool {
     if is_probe(name) {
         return true;
@@ -109,6 +109,7 @@ fn is_log_or_probe(name: &str) -> bool {
     let Some(rest) = name
         .strip_prefix("print-log-")
         .or_else(|| name.strip_prefix("import-log-"))
+        .or_else(|| name.strip_prefix("template-log-"))
     else {
         return false;
     };
@@ -234,6 +235,19 @@ mod tests {
         assert!(!s.may_add(r"D:\Old Logs\..\print-log-2026-10-PHARM.csv"));
         assert!(!s.may_add(r"D:\Old Logs\other.csv"));
         assert!(!s.may_add(r"print-log-2026-10-PHARM.csv"));
+    }
+
+    #[test]
+    fn the_template_log_can_be_added_in_any_folder_by_the_same_pattern() {
+        let s = scope();
+        assert!(s.may_add(r"D:\Old Logs\template-log-2026-10-PHARM-01.csv"));
+        assert!(!s.may_add(r"D:\Old Logs\template-log-2026-10-.csv"));
+        assert!(!s.may_add(r"D:\Old Logs\template-log-2026-10-pharm.csv"));
+        assert!(!s.may_add(r"D:\Old Logs\template-log-26-10-PHARM.csv"));
+        assert!(!s.may_add(r"D:\Old Logs\template-log-2026-10-PHARM.csv.exe"));
+        assert!(!s.may_add(r"D:\Old Logs\templates-log-2026-10-PHARM.csv"));
+        assert!(!s.may_add(r"D:\Old Logs\template-2026-10-PHARM.csv"));
+        assert!(!s.may_unlink(r"D:\Old Logs\template-log-2026-10-PHARM.csv"));
     }
 
     #[test]

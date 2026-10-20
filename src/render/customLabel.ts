@@ -7,9 +7,23 @@
  */
 
 import { MAX_COPIES, MIN_COPIES } from '../core/label'
-import { MAX_CODE_LENGTH, PLAIN_CHARACTERS, PLAIN_CHARACTERS_TEXT, type Symbology, type Template } from '../core/template'
+import {
+  DESIGN_GRID_MM,
+  DOTS_PER_MODULE_CHOICES,
+  MAX_CODE_LENGTH,
+  MAX_TEXT_LENGTH,
+  MAX_TEXT_LINES,
+  PLAIN_CHARACTERS,
+  PLAIN_CHARACTERS_TEXT,
+  TEXT_SIZE_CHOICES,
+  type Symbology,
+  type Template,
+  type TemplateCode,
+  type TemplateText
+} from '../core/template'
 import { renderPlainCode, type PlainCodeSymbol } from './dataMatrix'
-import { capHeightMm, labelSvgDocument, line, run, snapToDot, type LabelSize, type TextLine } from './labelSvg'
+import { capHeightMm, labelSvgDocument, line, run, snapToDot, WIDTH_SAFETY, type LabelSize, type TextLine } from './labelSvg'
+import { textWidthMm } from './textMetrics'
 import { formatLabelSizeMm, type LabelSizeEntry } from './printSettings'
 
 /** Text squeezed narrower than this share of its width is refused instead. */
@@ -62,11 +76,8 @@ export function buildCustomLabel(template: Template, size: LabelSize, input: Cus
   const errors: CustomFieldMessage[] = []
 
   const codeValue = template.code.mode === 'fixed' ? (template.code.value ?? '') : input.codeValue
-  const codeProblem = plainTextProblem(codeValue, 'The code data')
-  if (codeValue === '') errors.push({ field: 'code', message: 'Enter the code data.' })
-  else if (codeValue.length > MAX_CODE_LENGTH) errors.push({ field: 'code', message: `The code data must be at most ${MAX_CODE_LENGTH} characters.` })
-  else if (codeProblem) errors.push({ field: 'code', message: codeProblem })
-  else if (codeValue.trim() !== codeValue) errors.push({ field: 'code', message: 'The code data cannot start or end with a space.' })
+  const codeProblem = codeValueProblem(codeValue)
+  if (codeProblem) errors.push({ field: 'code', message: codeProblem })
 
   const fillCount = template.texts.filter((text) => text.mode === 'fill').length
   if (input.texts.length !== fillCount) return { ok: false, errors: [...errors, { field: 'template', message: 'The text lines do not match this template.' }] }
@@ -78,13 +89,13 @@ export function buildCustomLabel(template: Template, size: LabelSize, input: Cus
     const name = `Line ${i + 1}`
     const value = texts[i]
     const problem = plainTextProblem(value, name)
+    const maxLength = textMaxLength(element)
     if (problem) errors.push({ field, message: problem })
-    else if (element.maxLength !== undefined && value.length > element.maxLength) errors.push({ field, message: `${name} must be at most ${element.maxLength} characters.` })
+    else if (element.mode === 'fill' && value.length > maxLength) errors.push({ field, message: `${name} must be at most ${maxLength} characters.` })
 
-    const laidOut = line([run(value, element.fontSizePt, element.bold)], element.xMm, element.yMm + capHeightMm(element.fontSizePt), element.widthMm)
+    const laidOut = layOutText(element, value)
     if (!problem && laidOut.scaleX < MIN_TEXT_SCALE) errors.push({ field, message: `${name} is too long for this template.` })
-    const centred = element.align === 'center' && laidOut.scaleX === 1
-    return centred ? { ...laidOut, xMm: element.xMm + (element.widthMm - laidOut.widthMm) / 2 } : laidOut
+    return laidOut
   })
 
   const { copies } = input
@@ -96,11 +107,8 @@ export function buildCustomLabel(template: Template, size: LabelSize, input: Cus
 
   // The modules sit on whole printer dots; the code is the same size whatever its data.
   const drawn = renderPlainCode(input.symbology, codeValue, template.code.dotsPerModule)
-  const symbol = { ...drawn, xMm: snapToDot(template.code.xMm - drawn.widthMm / 2), yMm: snapToDot(template.code.yMm - drawn.heightMm / 2) }
-  const margin = Math.max(MIN_EDGE_MM, symbol.quietZoneMm) - 1e-9
-  const fits =
-    symbol.xMm >= margin && symbol.yMm >= margin && symbol.xMm + symbol.widthMm <= size.widthMm - margin && symbol.yMm + symbol.heightMm <= size.heightMm - margin
-  if (!fits) return { ok: false, errors: [{ field: 'template', message: 'The code does not fit inside the label at its position.' }] }
+  const symbol = { ...drawn, ...placed(template.code, drawn) }
+  if (!codeFits(symbol, size)) return { ok: false, errors: [{ field: 'template', message: 'The code does not fit inside the label at its position.' }] }
 
   return {
     ok: true,
@@ -138,6 +146,141 @@ export function renderCustomLabelSvg(label: CustomLabel): string {
     label.symbol,
     label.lines.filter((_, i) => label.texts[i] !== '')
   )
+}
+
+/** The symbol's top-left: centred on the code's position, on whole printer dots. */
+function placed(code: TemplateCode, drawn: { readonly widthMm: number; readonly heightMm: number }): { xMm: number; yMm: number } {
+  return { xMm: snapToDot(code.xMm - drawn.widthMm / 2), yMm: snapToDot(code.yMm - drawn.heightMm / 2) }
+}
+
+/** The symbol at least 1 mm inside the label, and its quiet zone inside it. */
+function codeFits(symbol: Box & { readonly quietZoneMm: number }, size: LabelSize): boolean {
+  const margin = Math.max(MIN_EDGE_MM, symbol.quietZoneMm) - 1e-9
+  return symbol.xMm >= margin && symbol.yMm >= margin && symbol.xMm + symbol.widthMm <= size.widthMm - margin && symbol.yMm + symbol.heightMm <= size.heightMm - margin
+}
+
+/** A text line laid out in its box: squeezed if too wide, centred if the Template says so. */
+function layOutText(element: TemplateText, value: string): TextLine {
+  const laidOut = line([run(value, element.fontSizePt, element.bold)], element.xMm, element.yMm + capHeightMm(element.fontSizePt), element.widthMm)
+  const centred = element.align === 'center' && laidOut.scaleX === 1
+  return centred ? { ...laidOut, xMm: element.xMm + (element.widthMm - laidOut.widthMm) / 2 } : laidOut
+}
+
+/**
+ * At most this many characters may be typed in a fill-in line: its `maxLength` if set, else as many
+ * digits as fit its box unsqueezed (1 to {@link MAX_TEXT_LENGTH}).
+ */
+export function textMaxLength(element: TemplateText): number {
+  if (element.maxLength !== undefined) return element.maxLength
+  const digitMm = textWidthMm('0', element.fontSizePt, element.bold) * WIDTH_SAFETY
+  return Math.min(MAX_TEXT_LENGTH, Math.max(1, Math.floor(element.widthMm / digitMm + 1e-9)))
+}
+
+/** A rectangle on the label, in mm from its top-left. */
+export interface Box {
+  readonly xMm: number
+  readonly yMm: number
+  readonly widthMm: number
+  readonly heightMm: number
+}
+
+function overlaps(a: Box, b: Box): boolean {
+  return a.xMm < b.xMm + b.widthMm && b.xMm < a.xMm + a.widthMm && a.yMm < b.yMm + b.heightMm && b.yMm < a.yMm + a.heightMm
+}
+
+function onGrid(mm: number): boolean {
+  return Math.abs(mm / DESIGN_GRID_MM - Math.round(mm / DESIGN_GRID_MM)) < 1e-6
+}
+
+/** A text line's box: its width, and from its top down to the bottom of its descenders. */
+export function textBox(element: TemplateText): Box {
+  const laidOut = layOutText({ ...element, align: 'left' }, '')
+  return { xMm: element.xMm, yMm: element.yMm, widthMm: element.widthMm, heightMm: laidOut.bottomMm - element.yMm }
+}
+
+/**
+ * The area the code keeps clear, quiet zone included, for whichever code staff print (DataMatrix or
+ * QR at the Template's module size; the size never depends on the data), and whether all of it fits.
+ */
+export function codeArea(code: TemplateCode, size: LabelSize): { box: Box; fits: boolean } {
+  const symbols = (['datamatrix', 'qr'] as const).map((symbology) => {
+    const drawn = renderPlainCode(symbology, 'A', code.dotsPerModule)
+    return { ...drawn, ...placed(code, drawn) }
+  })
+  const left = Math.min(...symbols.map((s) => s.xMm - s.quietZoneMm))
+  const top = Math.min(...symbols.map((s) => s.yMm - s.quietZoneMm))
+  const right = Math.max(...symbols.map((s) => s.xMm + s.widthMm + s.quietZoneMm))
+  const bottom = Math.max(...symbols.map((s) => s.yMm + s.heightMm + s.quietZoneMm))
+  return { box: { xMm: left, yMm: top, widthMm: right - left, heightMm: bottom - top }, fits: symbols.every((symbol) => codeFits(symbol, size)) }
+}
+
+/**
+ * Why `template` cannot be saved for a label of `size`; empty when it can. Every code it may print
+ * and every text box must sit inside the label, the text clear of the code's quiet zone. Positions
+ * must be on the designer's 0.5 mm grid, except those kept unchanged from `original` (the stored
+ * Template, or the one copied), so a copy of Layout 1 or 2 keeps its exact positions.
+ */
+export function templateProblems(template: Template, size: LabelSize, original?: Template | null): string[] {
+  const { code } = template
+  if (!DOTS_PER_MODULE_CHOICES.includes(code.dotsPerModule)) return ['The code module size must be 3, 4 or 5 dots.']
+  const problems: string[] = []
+  if (template.texts.length > MAX_TEXT_LINES) problems.push(`A template has at most ${MAX_TEXT_LINES} text lines.`)
+
+  if (code.mode === 'fixed') {
+    const problem = (code.value ?? '') === '' ? 'Enter the fixed code data.' : codeValueProblem(code.value ?? '')
+    if (problem) problems.push(problem)
+  }
+  const codeMoved = !original || original.code.xMm !== code.xMm || original.code.yMm !== code.yMm
+  if (codeMoved && !(onGrid(code.xMm) && onGrid(code.yMm))) problems.push('The code must sit on the 0.5 mm grid.')
+  const area = codeArea(code, size)
+  if (!area.fits) problems.push('The code must be at least 1 mm inside the label.')
+
+  template.texts.forEach((element, i) => {
+    const name = `Line ${i + 1}`
+    if (!TEXT_SIZE_CHOICES.includes(element.fontSizePt)) {
+      problems.push(`${name} text size must be 6.5, 8 or 10 pt.`)
+      return
+    }
+    const kept = original?.texts.find((text) => text.id === element.id)
+    const moved = !kept || kept.xMm !== element.xMm || kept.yMm !== element.yMm
+    if (moved && !(onGrid(element.xMm) && onGrid(element.yMm))) problems.push(`${name} must sit on the 0.5 mm grid.`)
+    const box = textBox(element)
+    const edge = MIN_EDGE_MM - 1e-9
+    const inside = box.xMm >= edge && box.yMm >= edge && box.xMm + box.widthMm <= size.widthMm - edge && box.yMm + box.heightMm <= size.heightMm - edge
+    if (!inside) problems.push(`${name} must be at least 1 mm inside the label.`)
+    if (overlaps(area.box, box)) problems.push(`${name} overlaps the code.`)
+    if (element.mode === 'fixed') {
+      const value = element.value ?? ''
+      const problem = plainTextProblem(value, name)
+      if (problem) problems.push(problem)
+      else if (layOutText(element, value).scaleX < MIN_TEXT_SCALE) problems.push(`${name} is too long for this template.`)
+    } else if (element.maxLength !== undefined && !(Number.isInteger(element.maxLength) && element.maxLength >= 1 && element.maxLength <= MAX_TEXT_LENGTH)) {
+      problems.push(`${name} maximum length must be a whole number from 1 to ${MAX_TEXT_LENGTH}.`)
+    }
+  })
+  return problems
+}
+
+/**
+ * The designer's preview of `template`: a fixed code's data (else a sample), each fixed line's text
+ * and each fill-in line as "Line N", whether or not the layout is valid yet.
+ */
+export function templatePreviewSvg(template: Template, size: LabelSize): string {
+  const { code } = template
+  const codeValue = code.mode === 'fixed' && code.value && !codeValueProblem(code.value) ? code.value : 'SAMPLE'
+  const drawn = renderPlainCode(code.symbology, codeValue, code.dotsPerModule)
+  const lines = template.texts.map((text, i) => layOutText(text, text.mode === 'fixed' ? (text.value ?? '') : `Line ${i + 1}`))
+  return labelSvgDocument(size, { ...drawn, ...placed(code, drawn) }, lines)
+}
+
+/** Why code data cannot be printed, or null. */
+function codeValueProblem(value: string): string | null {
+  if (value === '') return 'Enter the code data.'
+  if (value.length > MAX_CODE_LENGTH) return `The code data must be at most ${MAX_CODE_LENGTH} characters.`
+  const problem = plainTextProblem(value, 'The code data')
+  if (problem) return problem
+  if (value.trim() !== value) return 'The code data cannot start or end with a space.'
+  return null
 }
 
 function plainTextProblem(value: string, name: string): string | null {

@@ -96,8 +96,19 @@ export type SaveSettingsOutcome = { readonly ok: true; readonly settings: PcSett
 /** The Label Sizes, shared by every PC: the Small Label first, then those added. */
 export type LabelSizesList = { readonly ok: true; readonly sizes: readonly LabelSizeEntry[] } | { readonly ok: false; readonly message: string }
 
-/** The Templates: for now the built-in Layouts 1 and 2. */
+/** The Templates: the built-in Layouts 1 and 2, then those staff saved, shared by every PC. */
 export type TemplatesList = { readonly ok: true; readonly templates: readonly Template[] } | { readonly ok: false; readonly message: string }
+
+/** After a Template save, copy, rename or delete: the Templates and the one saved (null after a delete). */
+export type TemplateChangeOutcome =
+  | {
+      readonly ok: true
+      readonly templates: readonly Template[]
+      readonly template: Template | null
+      /** e.g. the template log could not be written. */
+      readonly warning: string | null
+    }
+  | { readonly ok: false; readonly message: string }
 
 /** A Label Size to add. */
 export interface NewLabelSize {
@@ -150,8 +161,20 @@ export interface PreloadApi {
   deletePendingLabel(id: string): Promise<DeletePendingOutcome>
   /** Deletes every expired Pending Label (Expiry before this PC's today) in one locked change. */
   deleteExpiredPendingLabels(): Promise<DeleteExpiredOutcome>
-  /** The Templates a Custom Label prints from (the built-in Layouts 1 and 2; stored ones come with the Templates ticket). */
+  /** The Templates a Custom Label prints from: the built-in Layouts 1 and 2, then the saved ones (picking up changes from other PCs). */
   listTemplates(): Promise<TemplatesList>
+  /**
+   * Saves a Template in the shared `templates.dat`: a new one when its id is `''`, else replacing the
+   * saved one with its id. Refused, with the reason, unless its name is new ignoring case and its
+   * layout is valid on its Label Size. Built-ins cannot be saved. Logged either way.
+   */
+  saveTemplate(template: Template): Promise<TemplateChangeOutcome>
+  /** Renames a saved Template (name new ignoring case). Logged. */
+  renameTemplate(id: string, name: string): Promise<TemplateChangeOutcome>
+  /** Copies a built-in or saved Template, positions and all, under a new name. Logged. */
+  copyTemplate(id: string, name: string): Promise<TemplateChangeOutcome>
+  /** Deletes a saved Template. Logged. */
+  deleteTemplate(id: string): Promise<TemplateChangeOutcome>
   /**
    * Rebuilds and checks the Custom Label for this request from its Template, refuses it unless the
    * Template was made for the Label Size loaded in this PC's printer, prints it with that size's

@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { LabelRequest } from '../core/label'
-import { LAYOUT_1, LAYOUT_2 } from '../core/template'
+import { LAYOUT_1, LAYOUT_2, type Template } from '../core/template'
 import { linesOf, parseCsvLine } from '../data/csvTesting'
 import { tempFolder } from '../data/testFolder'
 import { DOT_MM } from '../render/dataMatrix'
@@ -121,6 +121,92 @@ describe('the loaded Label Size', () => {
   })
 })
 
+/** A new Template made in the designer for the Shelf size (50 × 30 mm): a fixed line and a fill-in line beside the code. */
+const SHELF_BIN: Template = {
+  id: '',
+  name: 'Shelf bin',
+  labelSizeId: 'shelf',
+  builtIn: false,
+  code: { xMm: 10, yMm: 15, symbology: 'datamatrix', dotsPerModule: 4, mode: 'fill' },
+  texts: [
+    { id: 'line-1', xMm: 20, yMm: 10, widthMm: 28, align: 'left', fontSizePt: 10, bold: true, mode: 'fixed', value: 'PHARMACY' },
+    { id: 'line-2', xMm: 20, yMm: 16, widthMm: 28, align: 'left', fontSizePt: 8, bold: false, mode: 'fill' }
+  ]
+}
+
+describe('Templates in the app', () => {
+  async function twoPcs() {
+    const folder = await tempFolder()
+    const one = await pc(folder, 'PHARM-01')
+    const two = await pc(folder, 'PHARM-02')
+    const shelf = await addSize(one.api, 'Shelf', 50, 30)
+    return { folder, one, two, shelf, design: { ...SHELF_BIN, labelSizeId: shelf } }
+  }
+
+  it('are saved for any Label Size, shared with every PC after the built-ins', async () => {
+    const { one, two, design } = await twoPcs()
+    const saved = await one.api.saveTemplate(design)
+    expect(saved).toMatchObject({ ok: true, warning: null, template: { ...design, id: expect.any(String) } })
+    const listed = await two.api.listTemplates()
+    expect(listed.ok && listed.templates.map((template) => template.name)).toEqual(['Layout 1', 'Layout 2', 'Shelf bin'])
+  })
+
+  it('are refused, with the reason, while the layout is not valid or the request is not a Template', async () => {
+    const { one, design } = await twoPcs()
+    const overlap = { ...design, texts: [{ ...design.texts[0], xMm: 15 }, design.texts[1]] }
+    expect(await one.api.saveTemplate(overlap)).toEqual({ ok: false, message: 'Line 1 overlaps the code.' })
+    expect(await one.api.saveTemplate({ ...design, labelSizeId: 'gone' })).toEqual({ ok: false, message: 'That label size is no longer in the list.' })
+    expect(await one.api.saveTemplate({ ...design, code: null } as unknown as Template)).toEqual({ ok: false, message: 'The template is not valid.' })
+    expect(await one.api.listTemplates()).toEqual({ ok: true, templates: [LAYOUT_1, LAYOUT_2] })
+  })
+
+  it('copy, rename and delete, each returning the list after', async () => {
+    const { one, two } = await twoPcs()
+    const copied = await one.api.copyTemplate(LAYOUT_2.id, 'My layout')
+    if (!copied.ok) throw new Error(copied.message)
+    const id = copied.template!.id
+    expect(copied.templates.map((template) => template.name)).toEqual(['Layout 1', 'Layout 2', 'My layout'])
+    // A copy keeps Layout 2's exact positions, and can be saved with them.
+    expect(await two.api.saveTemplate({ ...copied.template!, texts: copied.template!.texts.slice(0, 3) })).toMatchObject({ ok: true })
+    expect(await two.api.renameTemplate(id, 'Bins')).toMatchObject({ ok: true, template: { id, name: 'Bins' } })
+    expect(await one.api.renameTemplate(LAYOUT_1.id, 'Mine')).toEqual({ ok: false, message: 'Layout 1 is built in and cannot be changed. Copy it to make your own.' })
+    const deleted = await one.api.deleteTemplate(id)
+    expect(deleted).toEqual({ ok: true, templates: [LAYOUT_1, LAYOUT_2], template: null, warning: null })
+  })
+
+  it('log every save, copy, rename and delete in this PC’s template log, refused or not', async () => {
+    const { folder, one, design } = await twoPcs()
+    const saved = await one.api.saveTemplate(design)
+    if (!saved.ok) throw new Error(saved.message)
+    const id = saved.template!.id
+    await one.api.saveTemplate({ ...design, name: 'layout 1' })
+    await one.api.renameTemplate(id, 'Bin')
+    await one.api.copyTemplate(id, 'Bin 2')
+    await one.api.deleteTemplate(id)
+    const logs = await readdir(join(folder, 'logs'))
+    const name = logs.find((file) => file.startsWith('template-log-'))!
+    expect(name).toMatch(/^template-log-\d{4}-\d{2}-PHARM-01\.csv$/)
+    const lines = linesOf(await readFile(join(folder, 'logs', name), 'utf8'))
+    expect(lines[0]).toBe('Date Time,Windows User,PC,Action,Template,Result')
+    expect(lines.slice(1).map((line) => parseCsvLine(line).slice(1))).toEqual([
+      ['chantm', 'PHARM-01', 'Save', 'Shelf bin', 'Saved'],
+      ['chantm', 'PHARM-01', 'Save', 'layout 1', 'Refused: There is already a template named "Layout 1".'],
+      ['chantm', 'PHARM-01', 'Rename', 'Shelf bin → Bin', 'Renamed'],
+      ['chantm', 'PHARM-01', 'Copy', 'Bin → Bin 2', 'Copied'],
+      ['chantm', 'PHARM-01', 'Delete', 'Bin', 'Deleted']
+    ])
+  })
+
+  it('keep their Label Size from being deleted', async () => {
+    const { one, two, shelf, design } = await twoPcs()
+    const saved = await one.api.saveTemplate(design)
+    if (!saved.ok) throw new Error(saved.message)
+    expect(await two.api.deleteLabelSize(shelf)).toEqual({ ok: false, message: 'The label size "Shelf" is used by a Template and cannot be deleted.' })
+    await one.api.deleteTemplate(saved.template!.id)
+    expect(await two.api.deleteLabelSize(shelf)).toEqual({ ok: true, sizes: [SMALL_LABEL] })
+  })
+})
+
 describe('Custom Labels', () => {
   const custom: CustomLabelRequest = { templateId: LAYOUT_2.id, symbology: 'qr', codeValue: 'Bin #4 (top)', texts: ['Bin 4', '', 'top shelf', ''], copies: 2 }
 
@@ -160,6 +246,22 @@ describe('Custom Labels', () => {
     expect(await api.printCustomLabel({ ...custom, symbology: 'aztec' } as unknown as CustomLabelRequest)).toEqual({ ok: false, message: 'Not printed: the label request is not valid.' })
     expect(await api.printCustomLabel({ ...custom, texts: [1, 2, 3, 4] } as unknown as CustomLabelRequest)).toEqual({ ok: false, message: 'Not printed: the label request is not valid.' })
     expect(jobs).toHaveLength(0)
+  })
+
+  it('print from a saved Template on its own Label Size, asking only its fill-in lines', async () => {
+    const { folder, api, jobs } = await setUp()
+    const shelf = await addSize(api, 'Shelf', 50, 30)
+    const saved = await api.saveTemplate({ ...SHELF_BIN, labelSizeId: shelf })
+    if (!saved.ok) throw new Error(saved.message)
+    const request = { templateId: saved.template!.id, symbology: 'datamatrix', codeValue: 'BIN-4', texts: ['top shelf'], copies: 1 } as const
+    expect(await api.printCustomLabel(request)).toMatchObject({ ok: false, message: expect.stringContaining('This template was made for Shelf (50 × 30 mm)') })
+    expect((await api.savePrinterSettings(settingsFor(shelf))).ok).toBe(true)
+    expect(await api.printCustomLabel({ ...request, texts: ['top shelf', 'extra'] })).toEqual({ ok: false, message: 'Not printed: The text lines do not match this template.' })
+    expect(await api.printCustomLabel(request)).toMatchObject({ ok: true })
+    expect(jobs[0].html).toContain('>PHARMACY</tspan>')
+    expect(jobs[0].html).toContain('>top shelf</tspan>')
+    const printLog = (await readdir(join(folder, 'logs'))).find((name) => name.startsWith('print-log-'))!
+    expect(parseCsvLine(linesOf(await readFile(join(folder, 'logs', printLog), 'utf8'))[1]).slice(9)).toEqual(['Custom', 'Shelf bin', 'BIN-4', 'PHARMACY | top shelf'])
   })
 
   it('are refused when another Label Size is loaded, naming both', async () => {

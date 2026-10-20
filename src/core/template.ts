@@ -1,7 +1,8 @@
 /**
  * Templates: Custom Label layouts for one Label Size, with one Plain code and up to six lines of
  * text, each fixed (its value saved in the Template) or fill-in (typed when printing). Layouts 1
- * and 2 are built in, on the Small Label, read-only.
+ * and 2 are built in, on the Small Label, read-only; staff save their own in `templates.dat`
+ * (`src/data/templateStore.ts`), checked by `templateProblems` (`src/render/customLabel.ts`).
  *
  * Pure: no Node, DOM or Electron.
  */
@@ -55,6 +56,12 @@ export interface Template {
 
 export const MAX_TEXT_LINES = 6
 export const MAX_CODE_LENGTH = 40
+/** A fill-in line's maximum length is at most this. */
+export const MAX_TEXT_LENGTH = 40
+export const DOTS_PER_MODULE_CHOICES: readonly DotsPerModule[] = [3, 4, 5]
+export const TEXT_SIZE_CHOICES: readonly TextSizePt[] = [6.5, 8, 10]
+/** The designer moves elements in steps of this, and snaps them to it. */
+export const DESIGN_GRID_MM = 0.5
 
 /** What code data and text may hold: A–Z a–z 0–9, space and `- _ . / : # ( ) + *`. */
 export const PLAIN_CHARACTERS = /^[A-Za-z0-9 \-_./:#()+*]*$/
@@ -93,3 +100,73 @@ export const LAYOUT_2: Template = {
 }
 
 export const BUILT_IN_TEMPLATES: readonly Template[] = [LAYOUT_1, LAYOUT_2]
+
+export const MAX_TEMPLATE_NAME_LENGTH = 40
+
+/** A Template name trimmed, 1–40 characters, or why it cannot be one. */
+export function normaliseTemplateName(value: unknown): { ok: true; name: string } | { ok: false; message: string } {
+  const name = typeof value === 'string' ? value.trim() : ''
+  if (name === '') return { ok: false, message: 'Enter a name for the template.' }
+  if (name.length > MAX_TEMPLATE_NAME_LENGTH) return { ok: false, message: `The template name must be at most ${MAX_TEMPLATE_NAME_LENGTH} characters.` }
+  return { ok: true, name }
+}
+
+/**
+ * A Template read from untrusted input (the renderer, or `templates.dat`): its fields copied, typed
+ * and nothing else, never built in; null when it is not shaped like one. Whether its layout and
+ * values are allowed is `templateProblems`'s to say.
+ */
+export function parseTemplate(value: unknown): Template | null {
+  if (!isRecord(value) || !isRecord(value.code) || !Array.isArray(value.texts)) return null
+  const { code } = value
+  if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.labelSizeId !== 'string') return null
+  if (!isNumber(code.xMm) || !isNumber(code.yMm) || !isNumber(code.dotsPerModule) || !isMode(code.mode)) return null
+  if (code.symbology !== 'datamatrix' && code.symbology !== 'qr') return null
+  if (code.value !== undefined && typeof code.value !== 'string') return null
+  const texts: TemplateText[] = []
+  for (const text of value.texts as unknown[]) {
+    if (!isRecord(text) || typeof text.id !== 'string' || !isNumber(text.xMm) || !isNumber(text.yMm) || !isNumber(text.widthMm)) return null
+    if ((text.align !== 'left' && text.align !== 'center') || !isNumber(text.fontSizePt) || typeof text.bold !== 'boolean' || !isMode(text.mode)) return null
+    if ((text.value !== undefined && typeof text.value !== 'string') || (text.maxLength !== undefined && !isNumber(text.maxLength))) return null
+    texts.push({
+      id: text.id,
+      xMm: text.xMm,
+      yMm: text.yMm,
+      widthMm: text.widthMm,
+      align: text.align,
+      fontSizePt: text.fontSizePt as TextSizePt,
+      bold: text.bold,
+      mode: text.mode,
+      ...(text.value === undefined ? {} : { value: text.value }),
+      ...(text.maxLength === undefined ? {} : { maxLength: text.maxLength })
+    })
+  }
+  if (new Set(texts.map((text) => text.id)).size !== texts.length) return null
+  return {
+    id: value.id,
+    name: value.name,
+    labelSizeId: value.labelSizeId,
+    builtIn: false,
+    code: {
+      xMm: code.xMm,
+      yMm: code.yMm,
+      symbology: code.symbology,
+      dotsPerModule: code.dotsPerModule as DotsPerModule,
+      mode: code.mode,
+      ...(code.value === undefined ? {} : { value: code.value })
+    },
+    texts
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function isMode(value: unknown): value is ElementMode {
+  return value === 'fixed' || value === 'fill'
+}

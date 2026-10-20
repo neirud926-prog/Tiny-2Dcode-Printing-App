@@ -40,7 +40,7 @@ const OWN_LINE_GAP_MM = 1.0
 const CAP_HEIGHT_EM = 0.716
 const DESCENT_EM = 0.212
 /** Estimated widths are padded by this factor, so real text stays inside its line. */
-const WIDTH_SAFETY = 1.03
+export const WIDTH_SAFETY = 1.03
 
 export interface TextRun {
   readonly text: string
