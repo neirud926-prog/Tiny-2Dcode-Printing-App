@@ -10,8 +10,7 @@ publish = false
 tauri-build = { version = "2.7.3", features = [] }
 
 [dependencies]
-# webview-data-url: the hidden print window loads the label page as a data: URL.
-tauri = { version = "2.12.4", features = ["webview-data-url"] }
+tauri = { version = "2.12.4", features = [] }
 tauri-plugin-dialog = "2.8.3"
 tauri-plugin-single-instance = "2.5.4"
 serde = { version = "1", features = ["derive"] }

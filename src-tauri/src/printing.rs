@@ -8,12 +8,11 @@ pub struct PrinterChoice {
     pub display_name: String,
 }
 
-/// `LabelPrintJob` from `src/render/printJob.ts`, with its page as the `data:` URL `htmlDataUrl`
-/// makes (`src/tauri/host.ts`); the options' Electron-only fields are ignored.
+/// `LabelPrintJob` from `src/render/printJob.ts`; the options' Electron-only fields are ignored.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabelPrintJob {
-    pub url: String,
+    pub html: String,
     pub options: LabelPrintOptions,
 }
 
@@ -92,58 +91,72 @@ pub fn list_printers() -> Result<Vec<PrinterChoice>, String> {
         .collect()
 }
 
-/// Prints the label page silently: loads it in a hidden window that runs no scripts and can go
-/// nowhere, prints it through WebView2 with the job's options, then closes the window.
+/// Prints the label page silently: a hidden window that runs no scripts is given the page by
+/// WebView2 itself (`NavigateToString`), and once WebView2 says the page loaded it prints it with the
+/// job's options, then the window is closed.
+///
+/// The page is not loaded through Tauri: Tauri rewrites a `data:` page to add the app's CSP, which
+/// puts the raw HTML into the URL, and then drops the page-load event when that URL does not parse
+/// back, so Print waited forever (v0.2.0).
 #[cfg(windows)]
 pub async fn print_label(app: tauri::AppHandle, job: LabelPrintJob) -> Result<(), String> {
-    const LOAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
     use tauri::{async_runtime::channel, webview::PageLoadEvent, WebviewUrl, WebviewWindowBuilder};
 
+    const BLANK_WAIT: Duration = Duration::from_secs(5);
+    const LOAD_TIMEOUT: Duration = Duration::from_secs(60);
     static NEXT_WINDOW: AtomicU32 = AtomicU32::new(0);
 
     let copies = i32::try_from(job.options.copies).map_err(|_| "too many copies".to_string())?;
-    let url: tauri::Url = job
-        .url
-        .parse()
-        .map_err(|error| format!("the label page is not a valid URL: {error}"))?;
-    if url.scheme() != "data" {
-        return Err("the label page must be a data: URL".into());
-    }
     let label = format!(
         "label-print-{}",
         NEXT_WINDOW.fetch_add(1, Ordering::Relaxed)
     );
-    let (loaded_tx, mut loaded) = channel::<Result<(), String>>(1);
+    let (blank_tx, mut blank) = channel::<()>(1);
     let (done_tx, mut done) = channel::<Result<(), String>>(1);
-    // A page that never loads must not hang Print; nothing has printed yet then. Once the print has
-    // started there is no limit, as in the Electron app: giving up could not stop a spooled label.
-    let load_timeout = loaded_tx.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(LOAD_TIMEOUT);
-        let seconds = LOAD_TIMEOUT.as_secs();
-        let _ = load_timeout.try_send(Err(format!(
-            "the label page did not load within {seconds} seconds"
-        )));
-    });
-    let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::External(url))
-        .visible(false)
-        .disable_javascript()
-        .on_navigation(|url| url.scheme() == "data")
-        .on_page_load(move |_, page| {
-            if page.event() == PageLoadEvent::Finished {
-                let _ = loaded_tx.try_send(Ok(()));
+    // Set once the label page has loaded and the print started: from then on there is no limit, as
+    // in the Electron app, since giving up could not stop a label already sent to the printer.
+    let started = Arc::new(AtomicBool::new(false));
+    {
+        let (blank_tx, done_tx, started) = (blank_tx.clone(), done_tx.clone(), started.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(BLANK_WAIT);
+            let _ = blank_tx.try_send(());
+            std::thread::sleep(LOAD_TIMEOUT);
+            if !started.load(Ordering::SeqCst) {
+                let seconds = LOAD_TIMEOUT.as_secs();
+                let _ = done_tx.try_send(Err(format!(
+                    "the label page did not load within {seconds} seconds"
+                )));
             }
-        })
-        .build()
-        .map_err(|error| format!("could not open the print window: {error}"))?;
+        });
+    }
+    let window = WebviewWindowBuilder::new(
+        &app,
+        label,
+        WebviewUrl::External("about:blank".parse().expect("about:blank is a URL")),
+    )
+    .visible(false)
+    .disable_javascript()
+    .on_page_load(move |_, page| {
+        if page.event() == PageLoadEvent::Finished {
+            let _ = blank_tx.try_send(());
+        }
+    })
+    .build()
+    .map_err(|error| format!("could not open the print window: {error}"))?;
 
     let result: Result<(), String> = async {
-        loaded.recv().await.ok_or("the label page did not load")??;
-        let options = job.options;
+        // The blank page loads first, so the next navigation to finish is the label's.
+        blank.recv().await;
+        let (html, options) = (job.html, job.options);
         window
             .with_webview(move |webview| {
-                if let Err(error) = start_print(&webview, &options, copies, done_tx.clone()) {
+                if let Err(error) =
+                    load_and_print(&webview, &html, options, copies, done_tx.clone(), started)
+                {
                     let _ = done_tx.try_send(Err(hresult_error(error.code().0)));
                 }
             })
@@ -155,10 +168,57 @@ pub async fn print_label(app: tauri::AppHandle, job: LabelPrintJob) -> Result<()
     result
 }
 
+/// Gives WebView2 the page and, when it has loaded, starts the print (`start_print`).
+#[cfg(windows)]
+fn load_and_print(
+    webview: &tauri::webview::PlatformWebview,
+    html: &str,
+    options: LabelPrintOptions,
+    copies: i32,
+    done: tauri::async_runtime::Sender<Result<(), String>>,
+    started: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> windows::core::Result<()> {
+    use std::sync::atomic::Ordering;
+    use webview2_com::{Microsoft::Web::WebView2::Win32::*, NavigationCompletedEventHandler};
+    use windows::core::{BOOL, HSTRING};
+
+    unsafe {
+        let core = webview.controller().CoreWebView2()?;
+        let environment = webview.environment().clone();
+        let printer = core.clone();
+        let handler = NavigationCompletedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else { return Ok(()) };
+            if started.swap(true, Ordering::SeqCst) {
+                return Ok(()); // only the label page's navigation counts
+            }
+            let mut loaded = BOOL::default();
+            args.IsSuccess(&mut loaded)?;
+            if !loaded.as_bool() {
+                let mut status = COREWEBVIEW2_WEB_ERROR_STATUS::default();
+                args.WebErrorStatus(&mut status)?;
+                let _ = done.try_send(Err(format!(
+                    "the label page did not load (WebView2 error {})",
+                    status.0
+                )));
+                return Ok(());
+            }
+            if let Err(error) = start_print(&printer, &environment, &options, copies, done.clone())
+            {
+                let _ = done.try_send(Err(hresult_error(error.code().0)));
+            }
+            Ok(())
+        }));
+        let mut token = 0i64;
+        core.add_NavigationCompleted(&handler, &mut token)?;
+        core.NavigateToString(&HSTRING::from(html))
+    }
+}
+
 /// Starts the print; `done` gets its outcome when WebView2 has handed the job to the driver.
 #[cfg(windows)]
 fn start_print(
-    webview: &tauri::webview::PlatformWebview,
+    core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2,
+    environment: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Environment,
     options: &LabelPrintOptions,
     copies: i32,
     done: tauri::async_runtime::Sender<Result<(), String>>,
@@ -172,9 +232,8 @@ fn start_print(
     );
 
     unsafe {
-        let core: ICoreWebView2_16 = webview.controller().CoreWebView2()?.cast()?;
-        let settings = webview
-            .environment()
+        let core: ICoreWebView2_16 = core.cast()?;
+        let settings = environment
             .cast::<ICoreWebView2Environment6>()?
             .CreatePrintSettings()?;
         settings.SetOrientation(COREWEBVIEW2_PRINT_ORIENTATION_PORTRAIT)?;
@@ -240,12 +299,12 @@ mod tests {
     #[test]
     fn reads_the_print_job_from_the_web_side() {
         let job: LabelPrintJob = serde_json::from_str(
-            r#"{"html":"<p>x</p>","url":"data:text/html;charset=utf-8,%3Cp%3Ex%3C%2Fp%3E","options":{"silent":true,"deviceName":"Zebra ZD421","printBackground":true,
+            r#"{"html":"<p>x</p>","options":{"silent":true,"deviceName":"Zebra ZD421","printBackground":true,
             "margins":{"marginType":"none"},"landscape":false,"pageSize":{"width":34400,"height":25000},
             "copies":3,"scaleFactor":100}}"#,
         )
         .unwrap();
-        assert_eq!(job.url, "data:text/html;charset=utf-8,%3Cp%3Ex%3C%2Fp%3E");
+        assert_eq!(job.html, "<p>x</p>");
         assert_eq!(job.options.device_name, "Zebra ZD421");
         assert_eq!(
             (job.options.page_size.width, job.options.page_size.height),
