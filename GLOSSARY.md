@@ -63,8 +63,12 @@ _Avoid_: bag sticker, patient label
 ### Symbols
 
 **GS1 DataMatrix**:
-The square 2D symbol carrying GS1 AI data; the only symbology this app prints.
-_Avoid_: 2D code, DM code, QR code
+The square 2D symbol carrying GS1 AI data; the symbology of every GTIN Label.
+_Avoid_: 2D code, DM code
+
+**Plain code**:
+A DataMatrix or QR code holding exactly the characters staff typed, with no AIs; the symbology of a Custom Label.
+_Avoid_: free code, non-GS1 barcode
 
 **AI (Application Identifier)**:
 A GS1 numeric prefix naming the data field that follows: 01 GTIN, 17 expiry, 10 Lot.
