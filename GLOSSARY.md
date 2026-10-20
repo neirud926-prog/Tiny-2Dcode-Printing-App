@@ -50,6 +50,18 @@ _Avoid_: 2D GTIN label, drug label
 A label with a 2D code holding short data that staff type, and optional lines of text; no fixed meaning, for any scanning need.
 _Avoid_: self-defined code, free label
 
+**Label Size**:
+A named label roll size, width × height in mm, in a list shared by every PC; each PC records the one loaded in its printer.
+_Avoid_: paper size, label roll setting
+
+**Small Label**:
+The built-in Label Size of 34.4 × 25 mm; always present, never changed; the only size a GTIN Label prints on, and the default.
+_Avoid_: default label, standard label
+
+**Template**:
+A saved Custom Label layout for one Label Size: one code and up to six lines of text, each either fixed (saved in the Template) or fill-in (typed when printing); shared by every PC. Layouts 1 and 2 are built-in Templates.
+_Avoid_: design, preset, layout file
+
 ### Labels scanned in
 
 **Shelf Label**:
