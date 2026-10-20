@@ -1,0 +1,29 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "2D Code Print",
+  "version": "../package.json",
+  "identifier": "io.github.neirud926prog.tiny2dcode",
+  "build": {
+    "frontendDist": "../out-tauri",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "vite --config vite.tauri.config.mts",
+    "beforeBuildCommand": "vite build --config vite.tauri.config.mts"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "2D Code Print",
+        "url": "src/tauri/index.html",
+        "width": 1000,
+        "height": 720
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["../build/icon.ico", "../build/icon.png"]
+  }
+}

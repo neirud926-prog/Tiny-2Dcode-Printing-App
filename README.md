@@ -15,6 +15,17 @@ npm run dist:win      # build the portable Windows x64 .exe into release/ (CI do
 npm run dist:win:dir  # build the unpacked Windows folder release/win-unpacked/ (works on any OS)
 ```
 
+### Tauri app
+
+The same screens and app logic also run in a Tauri app (`src-tauri/`, WebView2 from Windows): `src/tauri/` sets the platform to Rust file commands and runs the shared app service (`src/app/service.ts`) in the webview. The Rust file commands refuse, with `EACCES`, any path outside `LabelData`, the folders and files chosen in the dialogs this session, and the log files (`print-log-…`/`import-log-…`) of a log folder saved earlier. One instance per PC; `LabelData` is beside the `.exe` (in development, in the project folder, as for Electron). Needs Rust as well as Node.
+
+```sh
+npm run tauri:dev     # start the Tauri app with hot reload (Windows; needs the WebView2 Runtime)
+npm run tauri:build   # typecheck, build the webview to out-tauri/, then src-tauri/target/release/tiny-2dcode.exe (no installer)
+cd src-tauri && cargo check --target x86_64-pc-windows-msvc   # compile-check the Rust side from any OS
+cd src-tauri && cargo test   # the path-scope and error-code tests (on Windows; elsewhere: rustc --edition 2021 --test src/scope.rs)
+```
+
 CI (`.github/workflows/ci.yml`) runs the tests on every push and pull request, then builds the portable `.exe` on Windows and keeps it as a workflow artifact for 14 days.
 
 ### Releasing

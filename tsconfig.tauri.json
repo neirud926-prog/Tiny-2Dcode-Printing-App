@@ -1,0 +1,27 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
+  "include": [
+    "src/tauri/**/*",
+    "src/renderer/src/**/*",
+    "src/preload/api.ts",
+    "src/preload/window.d.ts",
+    "src/app/**/*",
+    "src/data/**/*",
+    "src/core/**/*",
+    "src/render/**/*"
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/data/nodePlatform.ts",
+    "src/data/testFolder.ts",
+    "src/data/testSetup.ts",
+    "src/data/csvTesting.ts"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "jsx": "react-jsx",
+    // No Node types: the webview has no Node, so a Node import fails here.
+    "types": [],
+    "customConditions": ["browser"]
+  }
+}

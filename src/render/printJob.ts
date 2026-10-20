@@ -39,7 +39,7 @@ export function buildLabelPrintJob(label: Label, settings: PrintSettings): Label
   const h = cssMm(heightMm)
   const style =
     `@page{size:${w} ${h};margin:0}` +
-    `html,body{margin:0;padding:0;width:${w};height:${h};overflow:hidden;background:white}` +
+    `html,body{margin:0;padding:0;width:${w};height:${h};overflow:hidden;background:#fff}` +
     `.label{width:${w};height:${h};transform:translate(${settings.offsetXmm.toFixed(4)}mm,${settings.offsetYmm.toFixed(4)}mm)}` +
     `.label svg{display:block}`
   const html =

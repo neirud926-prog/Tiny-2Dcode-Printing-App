@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- The CSP is set by Tauri (src-tauri/tauri.conf.json), which adds what its IPC needs. -->
+    <title>2D Code Print</title>
+    <!-- Linked rather than imported from JS, so no inline <style> is needed (the CSP forbids it). -->
+    <link rel="stylesheet" href="/src/renderer/src/styles.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/tauri/main.ts"></script>
+  </body>
+</html>

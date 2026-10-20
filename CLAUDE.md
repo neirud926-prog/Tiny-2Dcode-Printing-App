@@ -23,4 +23,5 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`, both created when first needed
 - `npm run build`: typecheck, then electron-vite build to `out/`
 - `npm run dev`: run the app with hot reload
 - `npm run dist:win`: build, then the portable Windows x64 `.exe` into `release/` with electron-builder (`electron-builder.yml`); CI builds it on Windows and a `v*` tag publishes it as a GitHub Release
+- `npm run tauri:dev` / `npm run tauri:build`: the Tauri app (`src-tauri/` Rust shell, `src/tauri/` webview entry, `vite.tauri.config.mts` to `out-tauri/`); `npm run typecheck` includes `tsconfig.tauri.json` (no Node types). The Rust side cannot link here (no webkit): check it with `cargo check --target x86_64-pc-windows-msvc` in `src-tauri`, and run its pure tests with `rustc --edition 2021 --test src-tauri/src/scope.rs`
 - `npm run test-vectors`: regenerate `test-vectors/internal-gtin-v1.csv`

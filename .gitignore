@@ -5,6 +5,9 @@ node_modules/
 out/
 dist/
 release/
+out-tauri/
+src-tauri/target/
+src-tauri/gen/
 
 # App data folder created next to the app (never commit: holds imported HA data)
 LabelData/
