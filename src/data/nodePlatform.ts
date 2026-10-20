@@ -1,4 +1,4 @@
-/** The platform on Node: the Electron main process and the tests. */
+/** The platform on Node, for the tests. */
 import { appendFile, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { Platform } from './platform'

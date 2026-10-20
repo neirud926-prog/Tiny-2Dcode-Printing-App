@@ -59,7 +59,7 @@ describe('the Node platform', () => {
 })
 
 describe('the shared app logic', () => {
-  /** Modules the Electron app and the Tauri app both run: they may not use Node or Electron. */
+  /** Modules the Tauri webview runs: they may not use Node or Electron. */
   const shared = ['src/core', 'src/render', 'src/data', 'src/app'].flatMap((folder) =>
     readdirSync(folder)
       .filter((file) => /\.tsx?$/.test(file) && !file.endsWith('.test.ts') && !['nodePlatform.ts', 'testFolder.ts', 'testSetup.ts'].includes(file))

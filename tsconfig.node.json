@@ -1,11 +1,9 @@
 {
-  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
+  "extends": "./tsconfig.base.json",
   "include": [
-    "electron.vite.config.*",
     "vite.tauri.config.*",
     "vitest.config.*",
     "scripts/**/*",
-    "src/main/**/*",
     "src/preload/**/*",
     "src/data/**/*",
     "src/core/**/*",
@@ -15,7 +13,7 @@
   ],
   "compilerOptions": {
     "composite": true,
-    "types": ["node", "electron-vite/node"],
+    "types": ["node"],
     "customConditions": ["node"]
   }
 }

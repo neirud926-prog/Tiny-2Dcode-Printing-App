@@ -1,6 +1,6 @@
 /**
- * The file system and paths the data layer uses, supplied by the host: Node in the Electron main
- * process and in tests (`nodePlatform.ts`), Rust commands in the Tauri app. Nothing here imports
+ * The file system and paths the data layer uses, supplied by the host: Node in tests
+ * (`nodePlatform.ts`), Rust commands in the Tauri app. Nothing here imports
  * Node, so the same data layer runs in a webview too. Failures are Errors with a Node-style `code`
  * (`ENOENT`, `EEXIST`, `EBUSY`, `EPERM`, `EACCES`, …), which the data layer checks.
  */

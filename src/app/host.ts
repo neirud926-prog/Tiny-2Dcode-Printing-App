@@ -1,5 +1,5 @@
 /**
- * What the host app (Electron or Tauri) supplies to the shared app service behind `window.api`:
+ * What the host app (the Tauri shell) supplies to the shared app service behind `window.api`:
  * where the data lives, who and where this PC is, and the few things only the host can do.
  */
 import type { PrinterChoice } from '../preload/api'

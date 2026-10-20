@@ -1,7 +1,6 @@
 /**
- * The narrow API the renderer may call, exposed on `window.api` by the preload script.
- * The renderer has no Node access; every capability it needs is added here explicitly.
- * The main process treats everything the renderer sends as untrusted and validates it again.
+ * The narrow API the screens may call on `window.api`, set by `src/tauri/main.ts` to the shared app
+ * service (`src/app/service.ts`), which validates everything it is sent again.
  */
 
 import type { ItemListEntry, ItemListImportResult, ItemListInfo } from '../core/itemList'
@@ -137,22 +136,3 @@ export interface PreloadApi {
   /** Deletes every expired Pending Label (Expiry before this PC's today) in one locked change. */
   deleteExpiredPendingLabels(): Promise<DeleteExpiredOutcome>
 }
-
-/** IPC channel for each API method. */
-export const IPC_CHANNELS = {
-  getStartup: 'get-startup',
-  importItemList: 'import-item-list',
-  lookupItem: 'lookup-item',
-  importStockOnhand: 'import-stock-onhand',
-  getStockLots: 'get-stock-lots',
-  listPrinters: 'list-printers',
-  chooseLogFolder: 'choose-log-folder',
-  testPrint: 'test-print',
-  savePrinterSettings: 'save-printer-settings',
-  printLabel: 'print-label',
-  savePendingLabel: 'save-pending-label',
-  listPendingLabels: 'list-pending-labels',
-  printPendingLabel: 'print-pending-label',
-  deletePendingLabel: 'delete-pending-label',
-  deleteExpiredPendingLabels: 'delete-expired-pending-labels'
-} as const satisfies Record<keyof PreloadApi, string>
