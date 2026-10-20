@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { formatExpiry, parseExpiry } from '../../core/expiry'
 import { encodeInternalGtin, type PackVolumeDigit } from '../../core/internalGtin'
-import { describeItemList, formatFileDate, isLiquid, itemListProblems, type ItemListEntry, type ItemListInfo } from '../../core/itemList'
+import { isLiquid, itemListProblems, type ItemListEntry, type ItemListInfo } from '../../core/itemList'
 import { buildLabel, type BuildLabelResult, type FieldMessage, type LabelField, type LabelRequest } from '../../core/label'
 import { lotPicker, type LotChoice } from '../../core/lotPicker'
 import { itemCodeFromScan, type ScanSource } from '../../core/scanInput'
 import { isStockOnhandForToday, type StockLot, type StockOnhandInfo } from '../../core/stockOnhand'
 import type { ItemLookup, PrintOutcome } from '../../preload/api'
 import type { PcSettings } from '../../render/printSettings'
-import { AppHeader } from './AppHeader'
 import { LabelPreview } from './LabelPreview'
 import { LotPicker, type LotPickerView } from './LotPicker'
 import { OutcomeMessage } from './OutcomeMessage'
 import { PACK_VOLUME_CHOICES } from './packVolumeChoices'
 import { PendingLabelsDialog, usePendingLabels } from './PendingLabels'
-import { importedForToday, StockOnhandOutcome, StockOnhandStatus, useStockOnhandImport } from './StockOnhandImport'
+import { importedForToday, StockOnhandOutcome, useStockOnhandImport } from './StockOnhandImport'
 import { useToday } from './today'
 import { UnknownItemDialog } from './UnknownItemDialog'
 
@@ -80,7 +80,9 @@ interface LabelScreenProps {
   stockOnhand: StockOnhandInfo | null
   /** A newer Stock Onhand is in use (imported here, or by another PC). */
   onStockOnhandChanged(info: StockOnhandInfo): void
-  onOpenSettings(): void
+  /** Where the Pending Labels button goes in the app header (shown while this tab is open). */
+  headerSlot: HTMLElement | null
+  /** Another tab is open; the form keeps what was typed. */
   hidden?: boolean
 }
 
@@ -91,7 +93,7 @@ export function LabelScreen({
   onItemListChanged,
   stockOnhand,
   onStockOnhandChanged,
-  onOpenSettings,
+  headerSlot,
   hidden = false
 }: LabelScreenProps): React.JSX.Element {
   const today = useToday()
@@ -466,26 +468,19 @@ export function LabelScreen({
         : (scanHint ?? '6 characters, e.g. PARA01, or scan a label')
 
   return (
-    <div className="screen" hidden={hidden}>
-      <AppHeader>
-        <span className="header-info" title={describeItemList(itemList)}>
-          Item List <strong>{formatFileDate(itemList.sourceModified)}</strong>
-        </span>
-        <StockOnhandStatus stockOnhand={stockOnhand} today={today} />
-        <span className="header-info">
-          Printer <strong>{settings.printerName}</strong>
-        </span>
-        <button
-          type="button"
-          className={pending.ready > 0 ? 'button button--primary button--small' : 'button button--secondary button--small'}
-          onClick={() => setPendingOpen(true)}
-        >
-          Pending Labels{pending.total > 0 ? ` (${pending.total}${pending.ready > 0 ? `, ${pending.ready} ready` : ''})` : ''}
-        </button>
-        <button type="button" className="button button--secondary button--small" onClick={onOpenSettings}>
-          Settings
-        </button>
-      </AppHeader>
+    <>
+      {headerSlot &&
+        !hidden &&
+        createPortal(
+          <button
+            type="button"
+            className={pending.ready > 0 ? 'button button--primary button--small' : 'button button--secondary button--small'}
+            onClick={() => setPendingOpen(true)}
+          >
+            Pending Labels{pending.total > 0 ? ` (${pending.total}${pending.ready > 0 ? `, ${pending.ready} ready` : ''})` : ''}
+          </button>,
+          headerSlot
+        )}
 
       <main className="layout">
         <section className="panel form" aria-label="Label details">
@@ -614,7 +609,7 @@ export function LabelScreen({
         />
       )}
       {pendingOpen && <PendingLabelsDialog list={pending.list} refresh={pending.refresh} onClose={() => setPendingOpen(false)} />}
-    </div>
+    </>
   )
 }
 

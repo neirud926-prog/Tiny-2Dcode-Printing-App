@@ -24,7 +24,6 @@ interface PrinterSettingsScreenProps {
   /** Why earlier settings were not used, shown on the Setup step. */
   notice?: string | null
   onSaved(settings: PcSettings): void
-  onCancel?(): void
   /** More Settings sections, shown below the printer settings (e.g. the Item List). */
   children?: React.ReactNode
 }
@@ -40,17 +39,11 @@ export function PrinterSettingsScreen({
   initial = DEFAULT_PC_SETTINGS,
   notice = null,
   onSaved,
-  onCancel,
   children
 }: PrinterSettingsScreenProps): React.JSX.Element {
   const [printers, setPrinters] = useState<PrinterChoice[] | null>(null)
   const [printerName, setPrinterName] = useState(initial.printerName)
-  const [numbers, setNumbers] = useState<Record<NumberField, string>>({
-    widthMm: String(initial.labelSize.widthMm),
-    heightMm: String(initial.labelSize.heightMm),
-    offsetXmm: formatMm(initial.offsetXmm),
-    offsetYmm: formatMm(initial.offsetYmm)
-  })
+  const [numbers, setNumbers] = useState(() => numbersFrom(initial))
   const [logFolder, setLogFolder] = useState(initial.logFolder)
   const [touched, setTouched] = useState<ReadonlySet<PcSettingsField>>(new Set())
   const [busy, setBusy] = useState<'test' | 'save' | null>(null)
@@ -120,13 +113,24 @@ export function PrinterSettingsScreen({
     setOutcome(null)
     try {
       const result = await window.api.savePrinterSettings(validation.settings)
-      if (result.ok) onSaved(result.settings)
-      else setOutcome(result)
+      if (result.ok) {
+        onSaved(result.settings)
+        if (mode === 'settings') setOutcome({ ok: true, message: 'Settings saved.', warning: null })
+      } else setOutcome(result)
     } catch (error) {
       setOutcome({ ok: false, message: `The settings could not be saved: ${String(error)}` })
     } finally {
       setBusy(null)
     }
+  }
+
+  /** Settings tab: back to the saved settings. */
+  function revert(): void {
+    setPrinterName(initial.printerName)
+    setNumbers(numbersFrom(initial))
+    setLogFolder(initial.logFolder)
+    setTouched(new Set())
+    setOutcome(null)
   }
 
   async function chooseLogFolder(): Promise<void> {
@@ -147,12 +151,7 @@ export function PrinterSettingsScreen({
     return `${dots} dot${Math.abs(dots) === 1 ? '' : 's'} = ${formatMm(value)} mm`
   }
 
-  return (
-    <div className="screen">
-      <AppHeader>
-        <span className="header-info">PC {pcName}</span>
-      </AppHeader>
-
+  const content = (
       <main className="settings-layout">
         <section className="panel settings" aria-label="Printer settings">
           <h2>{mode === 'setup' ? 'Setup: Printer' : 'Printer settings'}</h2>
@@ -270,9 +269,9 @@ export function PrinterSettingsScreen({
             <button type="button" className="button button--primary" onClick={() => void save()} disabled={busy !== null}>
               {busy === 'save' ? 'Saving…' : 'Save'}
             </button>
-            {onCancel && (
-              <button type="button" className="button button--secondary" onClick={onCancel} disabled={busy !== null}>
-                Cancel
+            {mode === 'settings' && (
+              <button type="button" className="button button--secondary" onClick={revert} disabled={busy !== null}>
+                Revert
               </button>
             )}
           </div>
@@ -280,6 +279,14 @@ export function PrinterSettingsScreen({
         </section>
         {children}
       </main>
+  )
+  if (mode === 'settings') return content
+  return (
+    <div className="screen">
+      <AppHeader>
+        <span className="header-info">PC {pcName}</span>
+      </AppHeader>
+      {content}
     </div>
   )
 
@@ -335,6 +342,15 @@ function NumberInput({ field, label, unit, value, errors, confirmation, onChange
 function parseMm(value: string): number {
   const trimmed = value.trim()
   return /^[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$/.test(trimmed) ? Number(trimmed) : Number.NaN
+}
+
+function numbersFrom(settings: PcSettings): Record<NumberField, string> {
+  return {
+    widthMm: String(settings.labelSize.widthMm),
+    heightMm: String(settings.labelSize.heightMm),
+    offsetXmm: formatMm(settings.offsetXmm),
+    offsetYmm: formatMm(settings.offsetYmm)
+  }
 }
 
 function formatMm(value: number): string {

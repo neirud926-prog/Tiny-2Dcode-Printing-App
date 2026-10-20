@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import type { ItemListInfo } from '../../core/itemList'
+import { useEffect, useRef, useState } from 'react'
+import { formatFileDate, describeItemList, type ItemListInfo } from '../../core/itemList'
 import { isStockOnhandForToday, type StockOnhandInfo } from '../../core/stockOnhand'
 import type { AppStartup } from '../../preload/api'
 import type { PcSettings } from '../../render/printSettings'
@@ -7,14 +7,22 @@ import { AppHeader } from './AppHeader'
 import { ItemListPanel } from './ItemListImport'
 import { LabelScreen } from './LabelScreen'
 import { PrinterSettingsScreen } from './PrinterSettingsScreen'
-import { StockOnhandPanel, StockOnhandPrompt } from './StockOnhandImport'
+import { StockOnhandPanel, StockOnhandPrompt, StockOnhandStatus } from './StockOnhandImport'
 import { useToday } from './today'
+
+const TABS = [
+  { id: 'gtin', label: 'GTIN Label' },
+  { id: 'custom', label: 'Custom Label' },
+  { id: 'settings', label: 'Settings' }
+] as const
+type TabId = (typeof TABS)[number]['id']
 
 /**
  * Startup: the data folder must be writable. Setup then asks for what is missing, in order: the
  * Item List (shared by every PC, so imported once), then this PC's printer. Later launches open
  * straight to the label screen. Once Setup is complete, a launch with no Stock Onhand dated today
- * asks for today's file once (Import, or Skip and type Lots by hand).
+ * asks for today's file once (Import, or Skip and type Lots by hand). After Setup, three tabs:
+ * GTIN Label, Custom Label and Settings, all kept mounted so each keeps what was typed.
  */
 function App(): React.JSX.Element {
   const [startup, setStartup] = useState<AppStartup | null>(null)
@@ -23,7 +31,9 @@ function App(): React.JSX.Element {
   const [itemList, setItemList] = useState<ItemListInfo | null>(null)
   /** The Setup step "Item List" stays up, showing the import summary, until Continue. */
   const [itemListStep, setItemListStep] = useState(false)
-  const [editingSettings, setEditingSettings] = useState(false)
+  const [tab, setTab] = useState<TabId>('gtin')
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null)
+  const tabButtons = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({})
   const [stockOnhand, setStockOnhand] = useState<StockOnhandInfo | null>(null)
   /** The launch prompt for today's Stock Onhand: not decided yet, showing, or done for this launch. */
   const [stockPrompt, setStockPrompt] = useState<'pending' | 'open' | 'done'>('pending')
@@ -100,18 +110,86 @@ function App(): React.JSX.Element {
     )
   }
 
+  /** Arrow keys, Home and End move between tabs (and open the one reached). */
+  function onTabKey(event: React.KeyboardEvent): void {
+    const index = TABS.findIndex((t) => t.id === tab)
+    const next =
+      event.key === 'ArrowRight' ? (index + 1) % TABS.length
+      : event.key === 'ArrowLeft' ? (index + TABS.length - 1) % TABS.length
+      : event.key === 'Home' ? 0
+      : event.key === 'End' ? TABS.length - 1
+      : null
+    if (next === null) return
+    event.preventDefault()
+    setTab(TABS[next].id)
+    tabButtons.current[TABS[next].id]?.focus()
+  }
+
   return (
-    <>
-      {/* The label screen stays mounted under Settings, so the form keeps what was typed. */}
-      <LabelScreen
-        settings={settings}
-        itemList={itemList}
-        onItemListChanged={setItemList}
-        stockOnhand={stockOnhand}
-        onStockOnhandChanged={setStockOnhand}
-        onOpenSettings={() => setEditingSettings(true)}
-        hidden={editingSettings}
-      />
+    <div className="screen">
+      <AppHeader>
+        <span className="header-info" title={describeItemList(itemList)}>
+          Item List <strong>{formatFileDate(itemList.sourceModified)}</strong>
+        </span>
+        <StockOnhandStatus stockOnhand={stockOnhand} today={today} />
+        <span className="header-info">
+          Printer <strong>{settings.printerName}</strong>
+        </span>
+        <span ref={setHeaderSlot} className="app-header__slot" />
+      </AppHeader>
+      <div className="tabs" role="tablist" aria-label="Screens" onKeyDown={onTabKey}>
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            ref={(element) => {
+              tabButtons.current[t.id] = element
+            }}
+            type="button"
+            role="tab"
+            id={`tab-${t.id}`}
+            className="tabs__tab"
+            aria-selected={tab === t.id}
+            aria-controls={`panel-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div role="tabpanel" id="panel-gtin" aria-labelledby="tab-gtin" hidden={tab !== 'gtin'}>
+        <LabelScreen
+          settings={settings}
+          itemList={itemList}
+          onItemListChanged={setItemList}
+          stockOnhand={stockOnhand}
+          onStockOnhandChanged={setStockOnhand}
+          headerSlot={headerSlot}
+          hidden={tab !== 'gtin'}
+        />
+      </div>
+      <div role="tabpanel" id="panel-custom" aria-labelledby="tab-custom" hidden={tab !== 'custom'}>
+        <main className="settings-layout">
+          <section className="panel settings">
+            <h2>Custom Label</h2>
+            <p className="settings__intro">Custom Labels arrive in this version.</p>
+          </section>
+        </main>
+      </div>
+      <div role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" hidden={tab !== 'settings'}>
+        <PrinterSettingsScreen
+          mode="settings"
+          pcName={startup.pcName}
+          defaultLogFolder={startup.defaultLogFolder}
+          initial={settings}
+          onSaved={setSettings}
+        >
+          <ItemListPanel mode="settings" itemList={itemList} onImported={setItemList} />
+          <StockOnhandPanel stockOnhand={stockOnhand} today={today} onImported={setStockOnhand} />
+        </PrinterSettingsScreen>
+      </div>
+
       {stockPrompt === 'open' && (
         <StockOnhandPrompt
           stockOnhand={stockOnhand}
@@ -121,23 +199,7 @@ function App(): React.JSX.Element {
           onClose={() => setStockPrompt('done')}
         />
       )}
-      {editingSettings && (
-        <PrinterSettingsScreen
-          mode="settings"
-          pcName={startup.pcName}
-          defaultLogFolder={startup.defaultLogFolder}
-          initial={settings}
-          onSaved={(saved) => {
-            setSettings(saved)
-            setEditingSettings(false)
-          }}
-          onCancel={() => setEditingSettings(false)}
-        >
-          <ItemListPanel mode="settings" itemList={itemList} onImported={setItemList} />
-          <StockOnhandPanel stockOnhand={stockOnhand} today={today} onImported={setStockOnhand} />
-        </PrinterSettingsScreen>
-      )}
-    </>
+    </div>
   )
 }
 
