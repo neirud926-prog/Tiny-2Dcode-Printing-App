@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises'
+import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { LabelRequest } from '../core/label'
@@ -220,6 +220,14 @@ describe('Custom Labels', () => {
   it('lists the built-in Layouts 1 and 2', async () => {
     const { api } = await setUp()
     expect(await api.listTemplates()).toEqual({ ok: true, templates: [LAYOUT_1, LAYOUT_2] })
+  })
+
+  it('still print from the built-in Layouts when templates.dat is damaged', async () => {
+    const { folder, api, jobs } = await setUp()
+    await writeFile(join(folder, 'templates.dat'), 'damaged')
+    expect(await api.listTemplates()).toMatchObject({ ok: false })
+    expect(await api.printCustomLabel(custom)).toMatchObject({ ok: true })
+    expect(jobs).toHaveLength(1)
   })
 
   it('print on the loaded Small Label with its offsets, and are logged as Custom', async () => {
