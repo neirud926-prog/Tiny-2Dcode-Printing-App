@@ -369,7 +369,10 @@ export function TemplateDesigner({ initial, size, templates, onSaved, onCancel }
           {draft.texts.map((entry, i) => overlay(entry.id, textBox(entry), `Line ${i + 1}`))}
         </div>
         <p className="preview-caption">
-          {size.widthMm} × {size.heightMm} mm label, enlarged. The code's box includes its quiet zone. Click an element to select it.
+          {size.kind === 'tape'
+            ? `${size.widthMm} mm along ${size.heightMm} mm tape, enlarged, as it reads along the tape; outside the printable band (shaded) nothing prints.`
+            : `${size.widthMm} × ${size.heightMm} mm label, enlarged.`}{' '}
+          The code's box includes its quiet zone. Click an element to select it.
         </p>
       </section>
     </main>

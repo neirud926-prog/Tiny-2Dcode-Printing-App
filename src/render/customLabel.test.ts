@@ -102,6 +102,16 @@ describe('buildCustomLabel: copies and fit', () => {
     const big: Template = { ...LAYOUT_2, code: { ...LAYOUT_2.code, moduleSize: 'large' } }
     expect(errorsOf(big, { symbology: 'qr', texts: ['', '', '', ''] })).toEqual([{ field: 'template', message: 'The code does not fit inside the label at its position.' }])
   })
+
+  it('on a Tape Size refuses a code whose quiet zone leaves the printable band, where a die-cut label would take it', () => {
+    // 24 mm tape: the band is 0.71–23.29 mm. A Small QR at 203 dpi (3 dots) with its quiet zone starts 7 mm above its centre.
+    const tape = { kind: 'tape' as const, widthMm: 50, heightMm: 24 }
+    const high: Template = { ...LAYOUT_1, texts: [], code: { ...LAYOUT_1.code, xMm: 25, yMm: 7.5 } }
+    const request = { ...input, symbology: 'qr' as const, texts: [] }
+    expect(buildCustomLabel(high, { ...tape, kind: 'label' }, request, 203)).toMatchObject({ ok: true })
+    expect(buildCustomLabel(high, tape, request, 203)).toEqual({ ok: false, errors: [{ field: 'template', message: 'The code does not fit inside the printable band of the tape at its position.' }] })
+    expect(buildCustomLabel({ ...high, code: { ...high.code, yMm: 8 } }, tape, request, 203)).toMatchObject({ ok: true })
+  })
 })
 
 describe('buildCustomLabel: Printer resolution', () => {
