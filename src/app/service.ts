@@ -14,23 +14,27 @@ import { addLabelSize, deleteLabelSize, isLabelSizeInUse, readLabelSizes } from 
 import { defaultLogFolder, loadPcSettings, resolveLogFolder, savePcSettings } from '../data/pcSettings'
 import { appendPrintLog } from '../data/printLog'
 import { createStockOnhandSource } from '../data/stockOnhandStore'
+import { builtInTopupDatabase, createTopupSource } from '../data/topupStore'
 import type {
   AppStartup,
   DeleteExpiredOutcome,
   DeletePendingOutcome,
   ImportItemListOutcome,
   ImportStockOnhandOutcome,
+  ImportTopupDatabaseOutcome,
   ItemLookup,
   PendingLabelsList,
   PreloadApi,
   PrintOutcome,
   SavePendingOutcome,
   SaveSettingsOutcome,
-  StockLotsLookup
+  StockLotsLookup,
+  TopupLookup
 } from '../preload/api'
 import { normalisePcSettings, SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import type { AppHost } from './host'
 import { itemLookupFor, stockLotsLookupFor } from './itemLookup'
+import { topupLookupFor } from './topupLookup'
 import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
 import { printCustomLabelRequest, printerProblem, printLabelRequest, printTestLabel, type PrintContext, type PrintServiceDeps } from './printService'
 import {
@@ -57,6 +61,7 @@ export function createAppService(host: AppHost): PreloadApi {
   }
   const itemLists = createItemListSource(dataFolder)
   const stockOnhand = createStockOnhandSource(dataFolder)
+  const topup = createTopupSource(dataFolder)
 
   /** True once the data folder passed its write check. */
   let folderReady = false
@@ -72,6 +77,8 @@ export function createAppService(host: AppHost): PreloadApi {
     lookupItem,
     importStockOnhand,
     getStockLots,
+    importTopupDatabase,
+    lookupTopup,
     listPrinters: () => host.listPrinters(),
     chooseLogFolder,
     testPrint,
@@ -157,6 +164,7 @@ export function createAppService(host: AppHost): PreloadApi {
     if (settings?.logFolder) allowedLogFolders.add(settings.logFolder)
     const items = await itemLists.load()
     const stock = await stockOnhand.load()
+    const topupLoad = await topup.load()
     return {
       status: 'ready',
       pcName,
@@ -167,7 +175,12 @@ export function createAppService(host: AppHost): PreloadApi {
       itemList: items.status === 'ok' ? items.list.info : null,
       itemListNotice: items.status === 'tampered' || items.status === 'unreadable' ? `${items.message} Import the Item List again.` : null,
       stockOnhand: stock.status === 'ok' ? stock.stock.info : null,
-      stockOnhandNotice: stock.status === 'tampered' || stock.status === 'unreadable' ? `${stock.message} Import today's Stock Onhand again.` : null
+      stockOnhandNotice: stock.status === 'tampered' || stock.status === 'unreadable' ? `${stock.message} Import today's Stock Onhand again.` : null,
+      topupDatabase: (await topup.current()).info,
+      topupDatabaseNotice:
+        topupLoad.status === 'tampered' || topupLoad.status === 'unreadable'
+          ? `${topupLoad.message} The built-in one is in use; import the workbook again.`
+          : null
     }
   }
 
@@ -217,6 +230,25 @@ export function createAppService(host: AppHost): PreloadApi {
 
   async function getStockLots(itemCode: unknown): Promise<StockLotsLookup> {
     return stockLotsLookupFor(folderReady ? await stockOnhand.current() : null, itemCode)
+  }
+
+  async function importTopupDatabase(): Promise<ImportTopupDatabaseOutcome> {
+    if (!folderReady) return { status: 'refused', message: 'The data folder is not ready.', summary: null, badRows: [], warning: null }
+    const file = await host.chooseFile({
+      title: 'Import the Topup Database (QRCode for Topup.xlsm)',
+      kind: 'file',
+      filters: [
+        { name: 'Excel workbook (*.xlsm, *.xlsx)', extensions: ['xlsm', 'xlsx'] },
+        { name: 'All files', extensions: ['*'] }
+      ]
+    })
+    if (!file) return { status: 'cancelled' }
+    return topup.importFile(file, { logFolder: currentLogFolder(), pcName, windowsUser: host.windowsUser, now: () => new Date() })
+  }
+
+  /** The built-in Topup Database works even when the data folder does not. */
+  async function lookupTopup(itemCode: unknown): Promise<TopupLookup> {
+    return topupLookupFor(folderReady ? await topup.current() : builtInTopupDatabase(), itemCode)
   }
 
   async function chooseLogFolder(): Promise<string | null> {

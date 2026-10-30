@@ -1,13 +1,13 @@
 /**
  * The import log: one CSV file per PC per month, `import-log-YYYY-MM-<PC>.csv`, append-only, one line
- * per import of the Item List or Stock Onhand, whether it was imported or refused.
+ * per import of the Item List, Stock Onhand or Topup Database, whether it was imported or refused.
  */
 import { errorText } from './atomicWrite'
 import { appendLogLine, csvLine, localDateTime, monthlyLogFileName } from './csvLog'
 
 export const IMPORT_LOG_HEADER: readonly string[] = ['Date Time', 'Windows User', 'PC', 'Kind', 'File', 'Rows imported', 'Bad rows', 'Result']
 
-export type ImportKind = 'Item List' | 'Stock Onhand'
+export type ImportKind = 'Item List' | 'Stock Onhand' | 'Topup Database'
 
 export interface ImportLogEntry {
   /** When the import ran (written as local time). */

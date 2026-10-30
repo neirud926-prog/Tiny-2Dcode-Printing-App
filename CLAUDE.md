@@ -23,3 +23,4 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`, both created when first needed
 - `npm run build`: typecheck, then build the webview to `out-tauri/` (any OS)
 - `npm run tauri:dev` / `npm run tauri:build`: run the app with hot reload / build `src-tauri/target/release/tiny-2dcode.exe` (`src-tauri/` Rust shell, `src/tauri/` webview entry, `vite.tauri.config.mts`); CI builds it on Windows as `2DCodePrint-<version>.exe` and a `v*` tag publishes it as a GitHub Release. The Rust side cannot link here (no webkit): check it with `cargo check --target x86_64-pc-windows-msvc` in `src-tauri`, and run its pure tests with `rustc --edition 2021 --test src-tauri/src/scope.rs` (and `src-tauri/src/paper.rs`)
 - `npm run test-vectors`: regenerate `test-vectors/internal-gtin-v1.csv`
+- `npm run topup-data -- "path/to/QRCode for Topup.xlsm"`: regenerate the built-in Topup Database `src/data/topupBuiltIn.json` from the workbook's DataBase sheet (the workbook is not in the repo)

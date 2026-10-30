@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatFileDate, describeItemList, type ItemListInfo } from '../../core/itemList'
 import { isStockOnhandForToday, type StockOnhandInfo } from '../../core/stockOnhand'
+import type { TopupDatabaseInfo } from '../../core/topup'
 import type { AppStartup } from '../../preload/api'
 import type { PcSettings } from '../../render/printSettings'
 import { AppHeader } from './AppHeader'
@@ -9,6 +10,7 @@ import { ItemListPanel } from './ItemListImport'
 import { LabelScreen } from './LabelScreen'
 import { PrinterSettingsScreen } from './PrinterSettingsScreen'
 import { StockOnhandPanel, StockOnhandPrompt, StockOnhandStatus } from './StockOnhandImport'
+import { TopupDatabasePanel } from './TopupDatabaseImport'
 import { useToday } from './today'
 
 const TABS = [
@@ -36,6 +38,7 @@ function App(): React.JSX.Element {
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null)
   const tabButtons = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({})
   const [stockOnhand, setStockOnhand] = useState<StockOnhandInfo | null>(null)
+  const [topupDatabase, setTopupDatabase] = useState<TopupDatabaseInfo | null>(null)
   /** The launch prompt for today's Stock Onhand: not decided yet, showing, or done for this launch. */
   const [stockPrompt, setStockPrompt] = useState<'pending' | 'open' | 'done'>('pending')
   const today = useToday()
@@ -51,6 +54,7 @@ function App(): React.JSX.Element {
           setItemList(result.itemList)
           setItemListStep(result.itemList === null)
           setStockOnhand(result.stockOnhand)
+          setTopupDatabase(result.topupDatabase)
         }
       },
       (error: unknown) => current && setStartupError(String(error))
@@ -183,6 +187,7 @@ function App(): React.JSX.Element {
         >
           <ItemListPanel mode="settings" itemList={itemList} onImported={setItemList} />
           <StockOnhandPanel stockOnhand={stockOnhand} today={today} onImported={setStockOnhand} />
+          {topupDatabase && <TopupDatabasePanel topupDatabase={topupDatabase} notice={startup.topupDatabaseNotice} onImported={setTopupDatabase} />}
         </PrinterSettingsScreen>
       </div>
 

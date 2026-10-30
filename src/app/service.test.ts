@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, readdir, readFile, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { LabelRequest } from '../core/label'
@@ -575,5 +575,114 @@ describe('Printer resolution', () => {
     const design: Template = { ...SHELF_BIN, labelSizeId: strip, code: { ...SHELF_BIN.code, xMm: 20, yMm: 12, moduleSize: 'large' }, texts: [] }
     expect(await api.saveTemplate(design)).toEqual({ ok: false, message: 'The code must be at least 1 mm inside the label.' })
     expect(await api.saveTemplate({ ...design, code: { ...design.code, moduleSize: 'medium' } })).toMatchObject({ ok: true })
+  })
+})
+
+describe('the Topup Database', () => {
+  /** The made-up workbook, copied as `QRCode for Topup.xlsx` dated 1 Oct 2026 08:30 local. */
+  async function workbook(fixture = 'topup-synthetic.xlsx'): Promise<string> {
+    const path = join(await tempFolder(), 'QRCode for Topup.xlsx')
+    await copyFile(join(__dirname, '../../test-fixtures', fixture), path)
+    await utimes(path, new Date(2026, 9, 1, 8, 30), new Date(2026, 9, 1, 8, 30))
+    return path
+  }
+
+  const builtIn = {
+    source: 'built-in',
+    sourceFileName: 'QRCode for Topup.xlsm',
+    sourceModified: '2026-09-30T08:14:44.000Z',
+    importedAt: null,
+    importedBy: null,
+    pc: null,
+    entries: 10_693
+  }
+
+  it('is built in: an Item Code is found with its <drug> content before anything is imported', async () => {
+    const { api } = await pc(await tempFolder(), 'PHARM-01')
+    const startup = await api.getStartup()
+    expect(startup.status === 'ready' && startup.topupDatabase).toEqual(builtIn)
+    expect(await api.lookupTopup('5flu01')).toEqual({
+      status: 'found',
+      entry: { itemCode: '5FLU01', displayName: '5FLUCYTOSINE', salt: '', formCode: 'TAB' },
+      content: '<drug S="1"><a>5FLUCYTOSINE</a><b></b><c></c><d>TAB</d><e></e><f>5FLU01</f><G></G><H></H><I></I><J></J></drug>',
+      topupDatabase: builtIn
+    })
+  })
+
+  it('refuses an Item Code it does not hold, and anything but a string', async () => {
+    const { api } = await pc(await tempFolder(), 'PHARM-01')
+    expect(await api.lookupTopup('fict01')).toEqual({ status: 'unknown', itemCode: 'FICT01', message: 'FICT01 is not in the Topup Database.', topupDatabase: builtIn })
+    expect(await api.lookupTopup(42 as unknown as string)).toMatchObject({ status: 'unknown', itemCode: '', topupDatabase: builtIn })
+  })
+
+  it('is replaced for every PC by an imported workbook, which is logged', async () => {
+    const folder = await tempFolder()
+    const source = await workbook()
+    const one = await pc(folder, 'PHARM-01', { chosenFile: source })
+    const two = await pc(folder, 'PHARM-02')
+    const imported = await one.api.importTopupDatabase()
+    const info = {
+      source: 'imported',
+      sourceFileName: 'QRCode for Topup.xlsx',
+      sourceModified: new Date(2026, 9, 1, 8, 30).toISOString(),
+      importedAt: expect.any(String),
+      importedBy: 'chantm',
+      pc: 'PHARM-01',
+      entries: 6
+    }
+    expect(imported).toEqual({ status: 'imported', info, summary: { rows: 7, entries: 6, badRows: 0, duplicates: 1 }, badRows: [], warning: null })
+
+    for (const each of [one, two]) {
+      expect(await each.api.lookupTopup('GAS 01')).toMatchObject({
+        status: 'found',
+        content: '<drug S="1"><a>SYNTH GAS (DISSOLVED & INDUSTRIAL)</a><b></b><c></c><d>CYN</d><e></e><f>GAS 01</f><G></G><H></H><I></I><J></J></drug>',
+        topupDatabase: info
+      })
+      expect(await each.api.lookupTopup('5FLU01')).toMatchObject({ status: 'unknown', message: '5FLU01 is not in the Topup Database.' })
+    }
+    expect(await one.api.lookupTopup('FICT01')).toMatchObject({ entry: { displayName: 'FICTAMOL', salt: '' } })
+    const restarted = await (await pc(folder, 'PHARM-03')).api.getStartup()
+    expect(restarted.status === 'ready' && restarted.topupDatabase).toEqual(info)
+
+    const [logName] = await readdir(join(folder, 'logs'))
+    expect(logName).toMatch(/^import-log-\d{4}-\d{2}-PHARM-01\.csv$/)
+    const lines = linesOf(await readFile(join(folder, 'logs', logName), 'utf8'))
+    expect(parseCsvLine(lines[1]).slice(1)).toEqual(['chantm', 'PHARM-01', 'Topup Database', source, '6', '0', 'Imported'])
+  })
+
+  it('keeps the one in use when a workbook is refused, logging why', async () => {
+    const folder = await tempFolder()
+    const text = join(await tempFolder(), 'items.txt')
+    await writeFile(text, 'Item Code\tDisplay Name (MOE)\r\n')
+    for (const [file, message] of [
+      [await workbook('topup-no-database.xlsx'), 'The workbook has no sheet named "DataBase".'],
+      [text, 'This is not an Excel workbook (.xlsx or .xlsm).']
+    ]) {
+      const { api } = await pc(folder, 'PHARM-01', { chosenFile: file })
+      expect(await api.importTopupDatabase()).toEqual({ status: 'refused', message, summary: null, badRows: [], warning: null })
+      expect(await api.lookupTopup('5FLU01')).toMatchObject({ status: 'found', topupDatabase: builtIn })
+    }
+    const [logName] = await readdir(join(folder, 'logs'))
+    const lines = linesOf(await readFile(join(folder, 'logs', logName), 'utf8'))
+    expect(lines.slice(1).map((line) => parseCsvLine(line).slice(3))).toEqual([
+      ['Topup Database', expect.stringContaining('QRCode for Topup.xlsx'), '0', '0', 'Refused: The workbook has no sheet named "DataBase".'],
+      ['Topup Database', text, '0', '0', 'Refused: This is not an Excel workbook (.xlsx or .xlsm).']
+    ])
+  })
+
+  it('falls back to the built-in one, with a notice, when topup.dat was changed outside the app', async () => {
+    const folder = await tempFolder()
+    await writeFile(join(folder, 'topup.dat'), 'changed')
+    const { api } = await pc(folder, 'PHARM-01')
+    const startup = await api.getStartup()
+    expect(startup.status === 'ready' && [startup.topupDatabase, startup.topupDatabaseNotice]).toEqual([
+      builtIn,
+      'The Topup Database (topup.dat) was changed outside the app. The built-in one is in use; import the workbook again.'
+    ])
+  })
+
+  it('is not imported when the dialog is cancelled', async () => {
+    const { api } = await pc(await tempFolder(), 'PHARM-01')
+    expect(await api.importTopupDatabase()).toEqual({ status: 'cancelled' })
   })
 })

@@ -8,6 +8,7 @@ import type { LabelRequest } from '../core/label'
 import type { PendingLabelInput, PendingLabelView } from '../core/pendingLabel'
 import type { StockLot, StockOnhandImportResult, StockOnhandInfo } from '../core/stockOnhand'
 import type { Template } from '../core/template'
+import type { TopupDatabaseInfo, TopupEntry, TopupImportResult } from '../core/topup'
 import type { CustomLabelRequest } from '../render/customLabel'
 import type { LabelSizeEntry, PcSettings } from '../render/printSettings'
 
@@ -38,6 +39,10 @@ export type AppStartup =
       readonly stockOnhand: StockOnhandInfo | null
       /** Why an existing Stock Onhand was not used (changed outside the app, or unreadable). */
       readonly stockOnhandNotice: string | null
+      /** The Topup Database in use: the imported one (shared by every PC), else the built-in one. */
+      readonly topupDatabase: TopupDatabaseInfo
+      /** Why an imported Topup Database was not used (changed outside the app, or unreadable), so the built-in one is. */
+      readonly topupDatabaseNotice: string | null
     }
 
 /** An installed printer. */
@@ -62,6 +67,27 @@ export type ImportItemListOutcome = ItemListImportResult | { readonly status: 'c
 
 /** The result of a Stock Onhand import; `cancelled` when staff closed the file dialog. */
 export type ImportStockOnhandOutcome = StockOnhandImportResult | { readonly status: 'cancelled' }
+
+/** The result of a Topup Database import; `cancelled` when staff closed the file dialog. */
+export type ImportTopupDatabaseOutcome = TopupImportResult | { readonly status: 'cancelled' }
+
+/** What the Topup Database in use says about an Item Code. */
+export type TopupLookup =
+  | {
+      readonly status: 'found'
+      readonly entry: TopupEntry
+      /** The Topup Label's code content, exactly the workbook's column B (`topupContent`). */
+      readonly content: string
+      readonly topupDatabase: TopupDatabaseInfo
+    }
+  | {
+      readonly status: 'unknown'
+      /** The Item Code looked up, a–z upper-cased. */
+      readonly itemCode: string
+      /** `<Item Code> is not in the Topup Database.` */
+      readonly message: string
+      readonly topupDatabase: TopupDatabaseInfo
+    }
 
 /** An item's Lots in the Stock Onhand in use. */
 export interface StockLotsLookup {
@@ -133,6 +159,14 @@ export interface PreloadApi {
   importStockOnhand(): Promise<ImportStockOnhandOutcome>
   /** An item's Lots in the Stock Onhand in use (picking up a newer one another PC imported). */
   getStockLots(itemCode: string): Promise<StockLotsLookup>
+  /**
+   * Lets staff choose the workbook `QRCode for Topup.xlsm` (or `.xlsx`) in the system file dialog and
+   * imports its DataBase sheet as the Topup Database (`topup.dat`, shared by every PC), which then
+   * overrides the built-in one. A refused workbook leaves the database in use unchanged. Logged either way.
+   */
+  importTopupDatabase(): Promise<ImportTopupDatabaseOutcome>
+  /** Looks an Item Code up in the Topup Database in use (picking up a newer one another PC imported). */
+  lookupTopup(itemCode: string): Promise<TopupLookup>
   listPrinters(): Promise<PrinterChoice[]>
   /** Lets staff pick a log folder in the system dialog; null if cancelled. */
   chooseLogFolder(): Promise<string | null>
