@@ -58,7 +58,7 @@ describe('print log line', () => {
   })
 
   it('records a Custom Label with Kind Custom, its Template, code data and text lines joined by " | ", and no GTIN fields', () => {
-    const custom = buildCustomLabel(LAYOUT_2, SMALL_LABEL, { symbology: 'qr', codeValue: 'Bin #4 (top)', texts: ['Bin 4', '', 'a+b', 'end'], copies: 2 })
+    const custom = buildCustomLabel(LAYOUT_2, SMALL_LABEL, { symbology: 'qr', codeValue: 'Bin #4 (top)', texts: ['Bin 4', '', 'a+b', 'end'], copies: 2 }, 203)
     if (!custom.ok) throw new Error(JSON.stringify(custom.errors))
     const line = printLogLine(customPrintLogEntryFor(custom.label, { at, windowsUser: 'chantm', pcName: 'PHARM-01' }))
     expect(line).toBe('2026-10-19 14:03:07,chantm,PHARM-01,,,,,,2,Custom,Layout 2,Bin #4 (top),Bin 4 |  | a+b | end\r\n')

@@ -7,7 +7,7 @@
  * Pure: no Node, DOM or Electron.
  */
 
-import { DOT_MM } from './dataMatrix'
+import { DEFAULT_PRINTER_RESOLUTION, dotMm, PRINTER_RESOLUTIONS, type PrinterResolution } from './dataMatrix'
 import { DEFAULT_LABEL_SIZE, type LabelSize } from './labelSvg'
 import { isTapeWidthMm, TAPE_WIDTHS_MM, tapeSizeName } from './tapeSize'
 
@@ -15,6 +15,8 @@ import { isTapeWidthMm, TAPE_WIDTHS_MM, tapeSizeName } from './tapeSize'
 export interface PrintSettings {
   /** The printer's system name, as Electron lists it (passed to the driver as the device name). */
   readonly printerName: string
+  /** Sizes the 2D code's modules in whole dots. */
+  readonly printerResolution: PrinterResolution
   readonly labelSize: LabelSize
   /** Moves the print right (positive) or left, in mm; always whole printer dots. */
   readonly offsetXmm: number
@@ -57,6 +59,8 @@ export interface SizeOffsets {
 export interface PcSettings {
   /** The printer's system name (passed to the driver as the device name). */
   readonly printerName: string
+  /** The printer's dots per inch: 2D code modules and offsets are whole dots at it. */
+  readonly printerResolution: PrinterResolution
   /** The Label Size loaded in this PC's printer. */
   readonly labelSizeId: string
   /** Offsets per Label Size id, so swapping rolls needs no recalibration; a size not listed has none. */
@@ -67,6 +71,7 @@ export interface PcSettings {
 
 export const DEFAULT_PC_SETTINGS: PcSettings = {
   printerName: '',
+  printerResolution: DEFAULT_PRINTER_RESOLUTION,
   labelSizeId: SMALL_LABEL.id,
   offsets: {},
   logFolder: null
@@ -79,8 +84,13 @@ export function offsetsFor(settings: Pick<PcSettings, 'offsets'>, labelSizeId: s
 
 /** What a print job on `size` needs from this PC's settings. */
 export function printSettingsFor(settings: PcSettings, size: LabelSizeEntry): PrintSettings {
-  const labelSize = { widthMm: size.widthMm, heightMm: size.heightMm }
-  return { printerName: settings.printerName, labelSize, ...offsetsFor(settings, size.id), ...(size.kind === 'tape' ? { onTape: true } : {}) }
+  return {
+    printerName: settings.printerName,
+    printerResolution: settings.printerResolution,
+    labelSize: { widthMm: size.widthMm, heightMm: size.heightMm },
+    ...offsetsFor(settings, size.id),
+    ...(size.kind === 'tape' ? { onTape: true } : {})
+  }
 }
 
 /** e.g. `34.4 × 25 mm`, or `24 mm tape × 40 mm` for a Tape Size. */
@@ -88,7 +98,7 @@ export function formatLabelSizeMm(size: LabelSize & { readonly kind?: LabelSizeK
   return size.kind === 'tape' ? tapeSizeName(size.heightMm, size.widthMm) : `${size.widthMm} × ${size.heightMm} mm`
 }
 
-export type PcSettingsField = 'printerName' | 'labelSizeId' | 'offsetXmm' | 'offsetYmm' | 'logFolder'
+export type PcSettingsField = 'printerName' | 'printerResolution' | 'labelSizeId' | 'offsetXmm' | 'offsetYmm' | 'logFolder'
 
 export interface PcSettingsMessage {
   readonly field: PcSettingsField
@@ -147,22 +157,23 @@ function sizeMessage(name: string): string {
 }
 
 /**
- * An offset rounded to whole printer dots, so the symbol stays on the dot grid and every module
- * prints exactly 3 dots.
+ * An offset rounded to whole printer dots at `dpi`, so the symbol stays on the dot grid and every
+ * module prints exactly the same number of dots.
  */
-export function snapToPrinterDots(mm: number): number {
-  const dots = Math.round(mm / DOT_MM)
-  return dots === 0 ? 0 : dots * DOT_MM
+export function snapToPrinterDots(mm: number, dpi: PrinterResolution): number {
+  const dots = Math.round(mm / dotMm(dpi))
+  return dots === 0 ? 0 : dots * dotMm(dpi)
 }
 
-/** An offset (already snapped) as a whole number of printer dots. */
-export function offsetInDots(mm: number): number {
-  return Math.round(mm / DOT_MM)
+/** An offset (already snapped) as a whole number of printer dots at `dpi`. */
+export function offsetInDots(mm: number, dpi: PrinterResolution): number {
+  return Math.round(mm / dotMm(dpi))
 }
 
 /**
  * Checks settings from anywhere (the form, the renderer, a settings file) and returns them cleaned
- * up: printer name trimmed, offsets snapped to whole printer dots. Whether the Label Size exists is
+ * up: printer name trimmed, offsets snapped to whole dots at the Printer resolution (203 dpi when
+ * not given, as in settings saved before it existed). Whether the Label Size exists is
  * checked against the shared list by the caller.
  */
 export function normalisePcSettings(input: unknown): NormalisePcSettingsResult {
@@ -171,6 +182,9 @@ export function normalisePcSettings(input: unknown): NormalisePcSettingsResult {
 
   const printerName = typeof record.printerName === 'string' ? record.printerName.trim() : ''
   if (printerName === '') errors.push({ field: 'printerName', message: 'Choose a printer.' })
+
+  const printerResolution = record.printerResolution === undefined ? DEFAULT_PRINTER_RESOLUTION : PRINTER_RESOLUTIONS.find((dpi) => dpi === record.printerResolution)
+  if (printerResolution === undefined) errors.push({ field: 'printerResolution', message: 'Choose the printer resolution.' })
 
   const labelSizeId = typeof record.labelSizeId === 'string' ? record.labelSizeId : ''
   if (labelSizeId === '') errors.push({ field: 'labelSizeId', message: 'Choose the label in this printer.' })
@@ -187,15 +201,15 @@ export function normalisePcSettings(input: unknown): NormalisePcSettingsResult {
   const logFolder = record.logFolder === null || (typeof record.logFolder === 'string' && record.logFolder.trim() !== '') ? record.logFolder : undefined
   if (logFolder === undefined) errors.push({ field: 'logFolder', message: 'Choose a log folder.' })
 
-  if (errors.length > 0 || logFolder === undefined) return { ok: false, errors }
-  return { ok: true, settings: { printerName, labelSizeId, offsets, logFolder } }
+  if (errors.length > 0 || logFolder === undefined || printerResolution === undefined) return { ok: false, errors }
+  return { ok: true, settings: { printerName, printerResolution, labelSizeId, offsets, logFolder } }
 
   function offsetMm(value: unknown, field: PcSettingsField, name: string): number | null {
     if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_OFFSET_MM) {
       errors.push({ field, message: `${name} must be from -${MAX_OFFSET_MM} to ${MAX_OFFSET_MM} mm.` })
       return null
     }
-    return snapToPrinterDots(value)
+    return snapToPrinterDots(value, printerResolution ?? DEFAULT_PRINTER_RESOLUTION)
   }
 }
 

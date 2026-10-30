@@ -9,19 +9,20 @@
 import { MAX_COPIES, MIN_COPIES } from '../core/label'
 import {
   DESIGN_GRID_MM,
-  DOTS_PER_MODULE_CHOICES,
+  MODULE_SIZE_CHOICES,
   MAX_CODE_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_TEXT_LINES,
   PLAIN_CHARACTERS,
   PLAIN_CHARACTERS_TEXT,
   TEXT_SIZE_CHOICES,
+  type ModuleSize,
   type Symbology,
   type Template,
   type TemplateCode,
   type TemplateText
 } from '../core/template'
-import { renderPlainCode, type PlainCodeSymbol } from './dataMatrix'
+import { moduleMm, PRINTER_RESOLUTIONS, renderPlainCode, type PlainCodeSymbol, type PrinterResolution } from './dataMatrix'
 import { capHeightMm, labelSvgDocument, line, run, snapToDot, WIDTH_SAFETY, type LabelSize, type TextLine } from './labelSvg'
 import { textWidthMm } from './textMetrics'
 import { formatLabelSizeMm, type LabelSizeEntry } from './printSettings'
@@ -71,8 +72,11 @@ export interface CustomLabel {
 
 export type BuildCustomLabelResult = { ok: true; label: CustomLabel } | { ok: false; errors: CustomFieldMessage[] }
 
-/** Checks what staff typed against `template` on a label of `size`, and lays the label out. */
-export function buildCustomLabel(template: Template, size: LabelSize, input: CustomLabelInput): BuildCustomLabelResult {
+/**
+ * Checks what staff typed against `template` on a label of `size`, and lays the label out for a
+ * printer of `dpi` (the PC's Printer resolution).
+ */
+export function buildCustomLabel(template: Template, size: LabelSize, input: CustomLabelInput, dpi: PrinterResolution): BuildCustomLabelResult {
   const errors: CustomFieldMessage[] = []
 
   const codeValue = template.code.mode === 'fixed' ? (template.code.value ?? '') : input.codeValue
@@ -106,8 +110,8 @@ export function buildCustomLabel(template: Template, size: LabelSize, input: Cus
   if (errors.length > 0) return { ok: false, errors }
 
   // The modules sit on whole printer dots; the code is the same size whatever its data.
-  const drawn = renderPlainCode(input.symbology, codeValue, template.code.dotsPerModule)
-  const symbol = { ...drawn, ...placed(template.code, drawn) }
+  const drawn = renderPlainCode(input.symbology, codeValue, template.code.moduleSize, dpi)
+  const symbol = { ...drawn, ...placed(template.code, drawn, dpi) }
   if (!codeFits(symbol, size)) return { ok: false, errors: [{ field: 'template', message: 'The code does not fit inside the label at its position.' }] }
 
   return {
@@ -148,9 +152,14 @@ export function renderCustomLabelSvg(label: CustomLabel): string {
   )
 }
 
-/** The symbol's top-left: centred on the code's position, on whole printer dots. */
-function placed(code: TemplateCode, drawn: { readonly widthMm: number; readonly heightMm: number }): { xMm: number; yMm: number } {
-  return { xMm: snapToDot(code.xMm - drawn.widthMm / 2), yMm: snapToDot(code.yMm - drawn.heightMm / 2) }
+/** The symbol's top-left: centred on the code's position, on whole printer dots at `dpi`. */
+function placed(code: TemplateCode, drawn: { readonly widthMm: number; readonly heightMm: number }, dpi: PrinterResolution): { xMm: number; yMm: number } {
+  return { xMm: snapToDot(code.xMm - drawn.widthMm / 2, dpi), yMm: snapToDot(code.yMm - drawn.heightMm / 2, dpi) }
+}
+
+/** The resolution at which modules of `size` are largest (e.g. Large: 9 dots at 360 dpi, 0.635 mm). */
+export function largestModuleResolution(size: ModuleSize): PrinterResolution {
+  return PRINTER_RESOLUTIONS.reduce((largest, dpi) => (moduleMm(size, dpi) > moduleMm(size, largest) ? dpi : largest))
 }
 
 /** The symbol at least 1 mm inside the label, and its quiet zone inside it. */
@@ -200,13 +209,17 @@ export function textBox(element: TemplateText): Box {
 
 /**
  * The area the code keeps clear, quiet zone included, for whichever code staff print (DataMatrix or
- * QR at the Template's module size; the size never depends on the data), and whether all of it fits.
+ * QR at the Template's module size; the size never depends on the data) on any PC, and whether all
+ * of it fits. Taken over every Printer resolution, so it covers the largest module and a Template
+ * that fits on one PC fits on every PC.
  */
 export function codeArea(code: TemplateCode, size: LabelSize): { box: Box; fits: boolean } {
-  const symbols = (['datamatrix', 'qr'] as const).map((symbology) => {
-    const drawn = renderPlainCode(symbology, 'A', code.dotsPerModule)
-    return { ...drawn, ...placed(code, drawn) }
-  })
+  const symbols = (['datamatrix', 'qr'] as const).flatMap((symbology) =>
+    PRINTER_RESOLUTIONS.map((dpi) => {
+      const drawn = renderPlainCode(symbology, 'A', code.moduleSize, dpi)
+      return { ...drawn, ...placed(code, drawn, dpi) }
+    })
+  )
   const left = Math.min(...symbols.map((s) => s.xMm - s.quietZoneMm))
   const top = Math.min(...symbols.map((s) => s.yMm - s.quietZoneMm))
   const right = Math.max(...symbols.map((s) => s.xMm + s.widthMm + s.quietZoneMm))
@@ -222,7 +235,7 @@ export function codeArea(code: TemplateCode, size: LabelSize): { box: Box; fits:
  */
 export function templateProblems(template: Template, size: LabelSize, original?: Template | null): string[] {
   const { code } = template
-  if (!DOTS_PER_MODULE_CHOICES.includes(code.dotsPerModule)) return ['The code module size must be 3, 4 or 5 dots.']
+  if (!MODULE_SIZE_CHOICES.includes(code.moduleSize)) return ['The code module size must be Small, Medium or Large.']
   const problems: string[] = []
   if (template.texts.length > MAX_TEXT_LINES) problems.push(`A template has at most ${MAX_TEXT_LINES} text lines.`)
 
@@ -263,14 +276,16 @@ export function templateProblems(template: Template, size: LabelSize, original?:
 
 /**
  * The designer's preview of `template`: a fixed code's data (else a sample), each fixed line's text
- * and each fill-in line as "Line N", whether or not the layout is valid yet.
+ * and each fill-in line as "Line N", whether or not the layout is valid yet. The code is drawn at its
+ * largest, the size the designer's fit check allows for.
  */
 export function templatePreviewSvg(template: Template, size: LabelSize): string {
   const { code } = template
   const codeValue = code.mode === 'fixed' && code.value && !codeValueProblem(code.value) ? code.value : 'SAMPLE'
-  const drawn = renderPlainCode(code.symbology, codeValue, code.dotsPerModule)
+  const dpi = largestModuleResolution(code.moduleSize)
+  const drawn = renderPlainCode(code.symbology, codeValue, code.moduleSize, dpi)
   const lines = template.texts.map((text, i) => layOutText(text, text.mode === 'fixed' ? (text.value ?? '') : `Line ${i + 1}`))
-  return labelSvgDocument(size, { ...drawn, ...placed(code, drawn) }, lines)
+  return labelSvgDocument(size, { ...drawn, ...placed(code, drawn, dpi) }, lines)
 }
 
 /** Why code data cannot be printed, or null. */

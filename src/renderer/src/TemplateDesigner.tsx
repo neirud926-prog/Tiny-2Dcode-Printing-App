@@ -1,19 +1,20 @@
 import { useMemo, useRef, useState } from 'react'
 import {
   DESIGN_GRID_MM,
-  DOTS_PER_MODULE_CHOICES,
+  MODULE_SIZE_CHOICES,
   MAX_TEXT_LENGTH,
   MAX_TEXT_LINES,
   normaliseTemplateName,
   TEXT_SIZE_CHOICES,
   type ElementMode,
+  type ModuleSize,
   type Template,
   type TemplateCode,
   type TemplateText
 } from '../../core/template'
 import type { TemplateChangeOutcome } from '../../preload/api'
-import { codeArea, templatePreviewSvg, templateProblems, textBox, textMaxLength, type Box } from '../../render/customLabel'
-import { DOT_MM } from '../../render/dataMatrix'
+import { codeArea, largestModuleResolution, templatePreviewSvg, templateProblems, textBox, textMaxLength, type Box } from '../../render/customLabel'
+import { moduleMm } from '../../render/dataMatrix'
 import { formatLabelSizeMm, type LabelSizeEntry } from '../../render/printSettings'
 
 /** The preview shows the label this many times its printed size (shrinking if the window is narrow). */
@@ -22,6 +23,8 @@ const PREVIEW_SCALE = 4
 const DRAG_THRESHOLD_MM = 0.25
 /** Shift + arrow moves this far. */
 const BIG_STEP_MM = 2
+/** A module size as staff see it; whole printer dots at each PC's Printer resolution. */
+const MODULE_SIZE_NAMES: Readonly<Record<ModuleSize, string>> = { small: 'Small', medium: 'Medium', large: 'Large' }
 
 type Selected = 'code' | string
 
@@ -37,7 +40,7 @@ export function newTemplate(size: LabelSizeEntry): Template {
     name: '',
     labelSizeId: size.id,
     builtIn: false,
-    code: { xMm: 7, yMm: middle, symbology: 'datamatrix', dotsPerModule: 3, mode: 'fill' },
+    code: { xMm: 7, yMm: middle, symbology: 'datamatrix', moduleSize: 'small', mode: 'fill' },
     texts: [{ id: 'line-1', xMm: 14, yMm: middle - 1, widthMm: Math.max(DESIGN_GRID_MM, Math.floor((size.widthMm - 15) / DESIGN_GRID_MM) * DESIGN_GRID_MM), align: 'left', fontSizePt: 8, bold: false, mode: 'fill' }]
   }
 }
@@ -224,10 +227,10 @@ export function TemplateDesigner({ initial, size, templates, onSaved, onCancel }
             />
             <div className="field">
               <label htmlFor="designer-dots">Module size</label>
-              <select id="designer-dots" value={draft.code.dotsPerModule} onChange={(event) => changeCode({ dotsPerModule: Number(event.target.value) as TemplateCode['dotsPerModule'] })}>
-                {DOTS_PER_MODULE_CHOICES.map((dots) => (
-                  <option key={dots} value={dots}>
-                    {dots} dots ({(dots * DOT_MM).toFixed(2)} mm)
+              <select id="designer-dots" value={draft.code.moduleSize} onChange={(event) => changeCode({ moduleSize: event.target.value as ModuleSize })}>
+                {MODULE_SIZE_CHOICES.map((moduleSize) => (
+                  <option key={moduleSize} value={moduleSize}>
+                    {MODULE_SIZE_NAMES[moduleSize]} (up to {moduleMm(moduleSize, largestModuleResolution(moduleSize)).toFixed(2)} mm)
                   </option>
                 ))}
               </select>

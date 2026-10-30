@@ -7,12 +7,12 @@ import { SMALL_LABEL } from './printSettings'
 const input: CustomLabelInput = { symbology: 'datamatrix', codeValue: 'SHELF-1C5A', texts: ['Shelf 1C5A'], copies: 1 }
 
 function errorsOf(template: Template, overrides: Partial<CustomLabelInput>) {
-  const built = buildCustomLabel(template, SMALL_LABEL, { ...input, ...overrides })
+  const built = buildCustomLabel(template, SMALL_LABEL, { ...input, ...overrides }, 203)
   return built.ok ? [] : built.errors
 }
 
 function labelOf(template: Template, overrides: Partial<CustomLabelInput> = {}) {
-  const built = buildCustomLabel(template, SMALL_LABEL, { ...input, ...overrides })
+  const built = buildCustomLabel(template, SMALL_LABEL, { ...input, ...overrides }, 203)
   if (!built.ok) throw new Error(JSON.stringify(built.errors))
   return built.label
 }
@@ -99,8 +99,28 @@ describe('buildCustomLabel: copies and fit', () => {
   })
 
   it('refuses a code that does not fit inside the label at its position', () => {
-    const big: Template = { ...LAYOUT_2, code: { ...LAYOUT_2.code, dotsPerModule: 5 } }
+    const big: Template = { ...LAYOUT_2, code: { ...LAYOUT_2.code, moduleSize: 'large' } }
     expect(errorsOf(big, { symbology: 'qr', texts: ['', '', '', ''] })).toEqual([{ field: 'template', message: 'The code does not fit inside the label at its position.' }])
+  })
+})
+
+describe('buildCustomLabel: Printer resolution', () => {
+  // A Large QR code is 18.14 mm at 203 dpi (5 dots) but 18.42 mm at 360 dpi (9 dots), each with about 2.5 mm of quiet zone.
+  const strip = { widthMm: 40, heightMm: 23.7 }
+  const large: Template = { ...LAYOUT_1, texts: [], code: { ...LAYOUT_1.code, xMm: 20, yMm: 12, moduleSize: 'large' } }
+  const request = { ...input, symbology: 'qr' as const, texts: [] }
+
+  it('checks the fit at the PC’s own resolution', () => {
+    expect(buildCustomLabel(large, strip, request, 203)).toMatchObject({ ok: true })
+    expect(buildCustomLabel(large, strip, request, 360)).toEqual({ ok: false, errors: [{ field: 'template', message: 'The code does not fit inside the label at its position.' }] })
+  })
+
+  it('draws the modules in whole dots at it: Layout 2 at 360 dpi has 5-dot modules on the 360 dpi grid', () => {
+    const built = buildCustomLabel(LAYOUT_2, SMALL_LABEL, { ...input, texts: ['', '', '', ''] }, 360)
+    if (!built.ok) throw new Error(JSON.stringify(built.errors))
+    const dots = (mm: number) => (mm * 360) / 25.4
+    expect(built.label.symbol.widthMm).toBeCloseTo((26 * 5 * 25.4) / 360, 12)
+    expect(Math.abs(dots(built.label.symbol.xMm) - Math.round(dots(built.label.symbol.xMm)))).toBeLessThan(1e-9)
   })
 })
 

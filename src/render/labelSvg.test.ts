@@ -47,6 +47,13 @@ describe('layoutLabel', () => {
     expect(symbol.widthMm).toBeCloseTo(symbol.columns * MODULE_MM, 12)
   })
 
+  it('puts the symbol on whole dots of a 360 dpi printer, 7 dots per module, when the PC prints at 360 dpi', () => {
+    const { symbol } = layoutLabel(labelFor(), DEFAULT_LABEL_SIZE, 360)
+    const onGrid = (mm: number) => Math.abs((mm * 360) / 25.4 - Math.round((mm * 360) / 25.4)) < 1e-9
+    expect(onGrid(symbol.xMm) && onGrid(symbol.yMm)).toBe(true)
+    expect(symbol.widthMm).toBeCloseTo((symbol.columns * 7 * 25.4) / 360, 12)
+  })
+
   it('sets Item Code, EXP and LOT beside the symbol, 1.2 mm from it', () => {
     const layout = layoutLabel(labelFor())
     const textX = layout.symbol.xMm + layout.symbol.widthMm + SYMBOL_TEXT_GAP_MM

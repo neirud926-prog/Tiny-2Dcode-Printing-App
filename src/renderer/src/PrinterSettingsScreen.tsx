@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { LabelSizesList, NewLabelSize, PrinterChoice, PrintOutcome } from '../../preload/api'
-import { DOT_MM } from '../../render/dataMatrix'
+import { dotMm, PRINTER_RESOLUTIONS, type PrinterResolution } from '../../render/dataMatrix'
 import {
   DEFAULT_PC_SETTINGS,
   formatLabelSizeMm,
@@ -52,6 +52,7 @@ export function PrinterSettingsScreen({
 }: PrinterSettingsScreenProps): React.JSX.Element {
   const [printers, setPrinters] = useState<PrinterChoice[] | null>(null)
   const [printerName, setPrinterName] = useState(initial.printerName)
+  const [printerResolution, setPrinterResolution] = useState<PrinterResolution>(initial.printerResolution)
   const [sizes, setSizes] = useState<readonly LabelSizeEntry[]>([SMALL_LABEL])
   const [sizesMessage, setSizesMessage] = useState<string | null>(null)
   const [labelSizeId, setLabelSizeId] = useState(initial.labelSizeId)
@@ -93,6 +94,7 @@ export function PrinterSettingsScreen({
   const texts = offsetTexts[labelSizeId] ?? offsetTextsOf(initial, labelSizeId)
   const candidate = {
     printerName,
+    printerResolution,
     labelSizeId,
     offsets: Object.fromEntries(
       Object.entries({ ...offsetTexts, [labelSizeId]: texts }).map(([id, typed]) => [id, { offsetXmm: parseMm(typed.offsetXmm), offsetYmm: parseMm(typed.offsetYmm) }])
@@ -162,6 +164,7 @@ export function PrinterSettingsScreen({
   /** Settings tab: back to the saved settings. */
   function revert(): void {
     setPrinterName(initial.printerName)
+    setPrinterResolution(initial.printerResolution)
     setLabelSizeId(initial.labelSizeId)
     setOffsetTexts(offsetTextsFrom(initial))
     setLogFolder(initial.logFolder)
@@ -182,8 +185,8 @@ export function PrinterSettingsScreen({
   function offsetConfirmation(field: OffsetField): string | null {
     const typed = parseMm(texts[field])
     if (!Number.isFinite(typed) || Math.abs(typed) > MAX_OFFSET_MM) return null
-    const value = snapToPrinterDots(typed)
-    const dots = offsetInDots(value)
+    const value = snapToPrinterDots(typed, printerResolution)
+    const dots = offsetInDots(value, printerResolution)
     return `${dots} dot${Math.abs(dots) === 1 ? '' : 's'} = ${formatMm(value)} mm`
   }
 
@@ -241,6 +244,29 @@ export function PrinterSettingsScreen({
           </div>
 
           <div className="field">
+            <label htmlFor="printerResolution">Printer resolution</label>
+            <div className="field__input">
+              <select
+                id="printerResolution"
+                value={printerResolution}
+                onChange={(event) => {
+                  setPrinterResolution(Number(event.target.value) as PrinterResolution)
+                  setOutcome(null)
+                }}
+              >
+                {PRINTER_RESOLUTIONS.map((dpi) => (
+                  <option key={dpi} value={dpi}>
+                    {dpi} dpi
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field__messages">
+              <p className="message message--hint">The printer's dots per inch: 203 for the Zebra label printers, 360 for the Brother PT-P900W. 2D codes are made of whole dots at it.</p>
+            </div>
+          </div>
+
+          <div className="field">
             <label htmlFor="labelSizeId">Label in this printer</label>
             <div className="field__input">
               <select
@@ -291,7 +317,7 @@ export function PrinterSettingsScreen({
               />
             </div>
             <p className="message message--hint">
-              Moves the print if it is off-centre on the label; negative moves left or up. Rounded to whole printer dots ({DOT_MM.toFixed(3)} mm). Kept
+              Moves the print if it is off-centre on the label; negative moves left or up. Rounded to whole printer dots ({dotMm(printerResolution).toFixed(3)} mm). Kept
               for each label size.
             </p>
           </fieldset>

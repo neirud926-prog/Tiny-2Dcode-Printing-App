@@ -13,7 +13,7 @@ import { printLabelRequest, printTestLabel, printerProblem, type DriverResult, t
 const request: LabelRequest = { itemCode: 'para18', packVolumeDigit: 2, expiry: '31122027', lot: '2512172-1', copies: 3 }
 
 const settings: PcSettings = {
-  printerName: 'ZDesigner GX420t',
+  printerName: 'ZDesigner GX420t', printerResolution: 203,
   labelSizeId: SMALL_LABEL.id,
   offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 }, other: { offsetXmm: 0, offsetYmm: 0 } },
   logFolder: null
@@ -21,7 +21,13 @@ const settings: PcSettings = {
 
 /** What Test print is given: the loaded size and its offsets. */
 const testSize: LabelSizeEntry = { id: 'small-roll', name: 'Small roll', kind: 'label', widthMm: 30, heightMm: 20 }
-const testSettings: PcSettings = { printerName: 'ZDesigner GX420t', labelSizeId: testSize.id, offsets: { [testSize.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 } }, logFolder: null }
+const testSettings: PcSettings = {
+  printerName: 'ZDesigner GX420t',
+  printerResolution: 203,
+  labelSizeId: testSize.id,
+  offsets: { [testSize.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 } },
+  logFolder: null
+}
 
 const itemList = indexItems([
   { itemCode: 'PARA01', name: 'SYNTHETIC FICTAMOL TABLET 500MG', baseUnit: 'TAB' },

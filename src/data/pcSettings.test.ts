@@ -9,7 +9,7 @@ import { writeSealed } from './sealed'
 import { tempFolder } from './testFolder'
 
 const settings: PcSettings = {
-  printerName: 'ZDesigner GX420t',
+  printerName: 'ZDesigner GX420t', printerResolution: 203,
   labelSizeId: SMALL_LABEL.id,
   offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 } },
   logFolder: null
@@ -94,7 +94,7 @@ describe('upgrading v0.2 settings', () => {
     await writeSealed(pcSettingsPath(root, 'PHARM-01'), legacy(34.4, 25))
     expect(await loadPcSettings(root, 'PHARM-01')).toEqual({
       status: 'ok',
-      settings: { printerName: 'ZDesigner GX420t', labelSizeId: SMALL_LABEL.id, offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: -DOT_MM } }, logFolder: null }
+      settings: { printerName: 'ZDesigner GX420t', printerResolution: 203, labelSizeId: SMALL_LABEL.id, offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: -DOT_MM } }, logFolder: null }
     })
     expect(await readLabelSizes(root)).toEqual({ ok: true, sizes: [SMALL_LABEL] })
   })
@@ -112,7 +112,7 @@ describe('upgrading v0.2 settings', () => {
       ['50 × 30 mm', 50, 30]
     ])
     const added = sizes.sizes[1].id
-    expect(first.settings).toEqual({ printerName: 'ZDesigner GX420t', labelSizeId: added, offsets: { [added]: { offsetXmm: 2 * DOT_MM, offsetYmm: -DOT_MM } }, logFolder: null })
+    expect(first.settings).toEqual({ printerName: 'ZDesigner GX420t', printerResolution: 203, labelSizeId: added, offsets: { [added]: { offsetXmm: 2 * DOT_MM, offsetYmm: -DOT_MM } }, logFolder: null })
     expect(second.settings.labelSizeId).toBe(added)
     // Saved in the new format: loading again changes nothing.
     expect(await loadPcSettings(root, 'PHARM-01')).toEqual(first)

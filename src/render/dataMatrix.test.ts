@@ -4,7 +4,7 @@ import { toBuffer } from 'bwip-js'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { prepareZXingModule, readBarcodes } from 'zxing-wasm/reader'
 import { buildLabel, decodeLabelData, type LabelRequest } from '../core/label'
-import { DOT_MM, MODULE_MM, dataMatrixOptions, plainCodeOptions, renderDataMatrix, renderPlainCode } from './dataMatrix'
+import { DOT_MM, MODULE_MM, dataMatrixOptions, MODULE_DOTS, plainCodeOptions, renderDataMatrix, renderPlainCode } from './dataMatrix'
 
 const today = '2026-10-19'
 
@@ -18,6 +18,19 @@ function labelFor(overrides: Partial<LabelRequest>) {
 }
 
 describe('module size', () => {
+  it('is whole printer dots at each Printer resolution: 203 dpi 3 / 4 / 5, 300 dpi 4 / 6 / 7, 360 dpi 5 / 7 / 9', () => {
+    expect(MODULE_DOTS).toEqual({ 203: { small: 3, medium: 4, large: 5 }, 300: { small: 4, medium: 6, large: 7 }, 360: { small: 5, medium: 7, large: 9 } })
+    // A 26 × 26 Plain DataMatrix: Large at 360 dpi is 26 × 9 dots = 16.51 mm.
+    expect(renderPlainCode('datamatrix', 'a', 'large', 360).widthMm).toBeCloseTo((26 * 9 * 25.4) / 360, 12)
+    expect(renderPlainCode('datamatrix', 'a', 'medium', 300).widthMm).toBeCloseTo((26 * 6 * 25.4) / 300, 12)
+  })
+
+  it('is Medium for a GTIN Label: 7 dots at 360 dpi, still about 1 cm', () => {
+    const symbol = renderDataMatrix(labelFor({}), 360)
+    expect(symbol.widthMm).toBeCloseTo((20 * 7 * 25.4) / 360, 12)
+    expect(symbol.widthMm).toBeCloseTo(9.878, 3)
+  })
+
   it('is exactly 4 printer dots at 203 dpi', () => {
     expect(DOT_MM).toBeCloseTo(25.4 / 203, 12)
     expect(MODULE_MM).toBeCloseTo((4 * 25.4) / 203, 12)
@@ -133,11 +146,11 @@ describe('render round-trip: the printed symbol decodes to the label data', () =
 
     it('are always the size that holds 40 characters (DataMatrix 26 × 26, QR version 3, 29 × 29), on whole printer dots', () => {
       for (const value of ['a', values[3], values[4]]) {
-        const dm = renderPlainCode('datamatrix', value, 3)
+        const dm = renderPlainCode('datamatrix', value, 'small', 203)
         expect([dm.columns, dm.rows]).toEqual([26, 26])
         expect(dm.widthMm).toBeCloseTo(26 * 3 * DOT_MM, 12)
         expect(dm.quietZoneMm).toBeCloseTo(3 * DOT_MM, 12)
-        const qr = renderPlainCode('qr', value, 5)
+        const qr = renderPlainCode('qr', value, 'large', 203)
         expect([qr.columns, qr.rows]).toEqual([29, 29])
         expect(qr.widthMm).toBeCloseTo(29 * 5 * DOT_MM, 12)
         expect(qr.quietZoneMm).toBeCloseTo(4 * 5 * DOT_MM, 12)
