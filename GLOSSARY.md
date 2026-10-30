@@ -50,6 +50,14 @@ _Avoid_: 2D GTIN label, drug label
 A label with a 2D code holding short data that staff type, and optional lines of text; no fixed meaning, for any scanning need.
 _Avoid_: self-defined code, free label
 
+**Topup Label**:
+A Custom Label for the drug top-up system: a 2D code holding the drug's Topup Database entry in the top-up system's `<drug>` format, with the Item Code under it; printed on 24 mm tape, 26 mm long.
+_Avoid_: topup QR, QR label
+
+**Topup Database**:
+The list of Item Codes with their display name, salt and form code that a Topup Label's code is made from; built into the app and replaced by importing a newer one.
+_Avoid_: topup workbook, QR database
+
 **Label Size**:
 A named size of the labels or tape loaded in a printer: a die-cut label's width × height in mm, or a Tape Size; in a list shared by every PC; each PC records the one loaded in its printer.
 _Avoid_: paper size, label roll setting
