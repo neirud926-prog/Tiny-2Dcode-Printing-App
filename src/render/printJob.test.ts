@@ -54,7 +54,7 @@ describe('buildLabelPrintJob', () => {
     const { html } = buildLabelPrintJob(label, settings)
     expect(html).toContain('@page{size:34.4mm 25mm;margin:0}')
     expect(html).toMatch(/html,body\{margin:0;/)
-    expect(html).toContain(renderLabelSvg(label, settings.labelSize))
+    expect(html).toContain(renderLabelSvg(label, settings.labelSize, settings.printerResolution))
   })
 
   it('applies the offsets as a translate, in mm', () => {
@@ -85,7 +85,7 @@ describe('buildCustomLabelPrintJob', () => {
 
 describe('a print job on tape', () => {
   // 24 mm tape × 40 mm: laid out 40 mm long (x) × 24 mm across the tape (y).
-  const onTape: PrintSettings = { ...settings, labelSize: { widthMm: 40, heightMm: 24 }, onTape: true }
+  const onTape: PrintSettings = { ...settings, labelSize: { widthMm: 40, heightMm: 24, kind: 'tape' } }
 
   it("uses the driver's paper: no page size, the rest as for a die-cut label", () => {
     const { options } = buildLabelPrintJob(labelFor(), onTape)
@@ -115,7 +115,7 @@ describe('a print job on tape', () => {
 describe('buildTapeTestPrintJob', () => {
   it('prints the outline, the printable band edges and the size name, one copy, on the driver\'s paper', () => {
     const tape = { id: 't', name: '24 mm tape × 40 mm', kind: 'tape', widthMm: 40, heightMm: 24 } as const
-    const { html, options } = buildTapeTestPrintJob(tape, { ...settings, labelSize: { widthMm: 40, heightMm: 24 }, onTape: true })
+    const { html, options } = buildTapeTestPrintJob(tape, { ...settings, labelSize: { widthMm: 40, heightMm: 24, kind: 'tape' } })
     expect(options).toMatchObject({ pageSize: null, copies: 1 })
     expect(html).toContain('rotate(90deg)')
     expect(html).toContain('<rect x="0.1" y="0.1" width="39.8" height="23.8"')
@@ -127,7 +127,7 @@ describe('buildTapeTestPrintJob', () => {
 
   it('keeps the band on 3.5 mm tape: 48 dots', () => {
     const tape = { id: 't', name: 'Tiny & thin', kind: 'tape', widthMm: 20, heightMm: 3.5 } as const
-    const { html } = buildTapeTestPrintJob(tape, { ...settings, labelSize: { widthMm: 20, heightMm: 3.5 }, onTape: true })
+    const { html } = buildTapeTestPrintJob(tape, { ...settings, labelSize: { widthMm: 20, heightMm: 3.5, kind: 'tape' } })
     expect(html).toContain('y1="0.0567"')
     expect(html).toContain('y1="3.4433"')
     expect(html).toContain('>Tiny &amp; thin</text>')

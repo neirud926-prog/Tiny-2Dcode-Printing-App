@@ -23,9 +23,9 @@ import {
   type TemplateText
 } from '../core/template'
 import { moduleMm, PRINTER_RESOLUTIONS, renderPlainCode, type PlainCodeSymbol, type PrinterResolution } from './dataMatrix'
-import { capHeightMm, labelSvgDocument, line, run, snapToDot, WIDTH_SAFETY, type LabelSize, type TextLine } from './labelSvg'
+import { capHeightMm, labelSvgDocument, line, ROUNDING_TOLERANCE, run, snapToDot, WIDTH_SAFETY, type LabelSize, type TextLine } from './labelSvg'
 import { textWidthMm } from './textMetrics'
-import { formatLabelSizeMm, type LabelSizeEntry, type LabelSizeKind } from './printSettings'
+import { formatLabelSizeMm, type FitSize, type LabelSizeEntry } from './printSettings'
 import { isTapeWidthMm, printableBandMm } from './tapeSize'
 
 /** Text squeezed narrower than this share of its width is refused instead. */
@@ -70,9 +70,6 @@ export interface CustomLabel {
   /** The laid-out text lines, one per Template text line. */
   readonly lines: readonly TextLine[]
 }
-
-/** A Label Size as the fit check sees it: on a Tape Size (`kind: 'tape'`, `heightMm` the tape width) content stays inside the printable band. */
-export type FitSize = LabelSize & { readonly kind?: LabelSizeKind }
 
 export type BuildCustomLabelResult = { ok: true; label: CustomLabel } | { ok: false; errors: CustomFieldMessage[] }
 
@@ -179,19 +176,19 @@ function tapeBand(size: FitSize): { topMm: number; bottomMm: number } | null {
  * the tape the symbol with its quiet zone inside the printable band.
  */
 function codeFits(symbol: Box & { readonly quietZoneMm: number }, size: FitSize): boolean {
-  const margin = Math.max(MIN_EDGE_MM, symbol.quietZoneMm) - 1e-9
+  const margin = Math.max(MIN_EDGE_MM, symbol.quietZoneMm) - ROUNDING_TOLERANCE
   const band = tapeBand(size)
   const along = symbol.xMm >= margin && symbol.xMm + symbol.widthMm <= size.widthMm - margin
   if (!band) return along && symbol.yMm >= margin && symbol.yMm + symbol.heightMm <= size.heightMm - margin
-  return along && symbol.yMm - symbol.quietZoneMm >= band.topMm - 1e-9 && symbol.yMm + symbol.heightMm + symbol.quietZoneMm <= band.bottomMm + 1e-9
+  return along && symbol.yMm - symbol.quietZoneMm >= band.topMm - ROUNDING_TOLERANCE && symbol.yMm + symbol.heightMm + symbol.quietZoneMm <= band.bottomMm + ROUNDING_TOLERANCE
 }
 
 /** A text box at least 1 mm inside the label; on a Tape Size, across the tape inside the printable band. */
 function textFits(box: Box, size: FitSize): boolean {
-  const edge = MIN_EDGE_MM - 1e-9
+  const edge = MIN_EDGE_MM - ROUNDING_TOLERANCE
   const band = tapeBand(size)
-  const top = band ? band.topMm - 1e-9 : edge
-  const bottom = band ? band.bottomMm + 1e-9 : size.heightMm - edge
+  const top = band ? band.topMm - ROUNDING_TOLERANCE : edge
+  const bottom = band ? band.bottomMm + ROUNDING_TOLERANCE : size.heightMm - edge
   return box.xMm >= edge && box.xMm + box.widthMm <= size.widthMm - edge && box.yMm >= top && box.yMm + box.heightMm <= bottom
 }
 
@@ -209,7 +206,7 @@ function layOutText(element: TemplateText, value: string): TextLine {
 export function textMaxLength(element: TemplateText): number {
   if (element.maxLength !== undefined) return element.maxLength
   const digitMm = textWidthMm('0', element.fontSizePt, element.bold) * WIDTH_SAFETY
-  return Math.min(MAX_TEXT_LENGTH, Math.max(1, Math.floor(element.widthMm / digitMm + 1e-9)))
+  return Math.min(MAX_TEXT_LENGTH, Math.max(1, Math.floor(element.widthMm / digitMm + ROUNDING_TOLERANCE)))
 }
 
 /** A rectangle on the label, in mm from its top-left. */
@@ -275,7 +272,7 @@ export function templateProblems(template: Template, size: FitSize, original?: T
   if (codeMoved && !(onGrid(code.xMm) && onGrid(code.yMm))) problems.push('The code must sit on the 0.5 mm grid.')
   const area = codeArea(code, size)
   const band = tapeBand(size)
-  if (band && area.box.heightMm > band.bottomMm - band.topMm + 1e-9) {
+  if (band && area.box.heightMm > band.bottomMm - band.topMm + ROUNDING_TOLERANCE) {
     problems.push(`The code with its quiet zone is taller than the printable band of ${size.heightMm} mm tape (${(band.bottomMm - band.topMm).toFixed(1)} mm).`)
   } else if (!area.fits) problems.push(band ? 'The code must be inside the printable band of the tape, at least 1 mm from the label ends.' : 'The code must be at least 1 mm inside the label.')
 

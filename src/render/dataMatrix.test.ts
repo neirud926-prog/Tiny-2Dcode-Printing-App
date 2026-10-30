@@ -38,19 +38,19 @@ describe('module size', () => {
   })
 
   it('is 1 cm square for a typical label', () => {
-    const symbol = renderDataMatrix(labelFor({}))
+    const symbol = renderDataMatrix(labelFor({}), 203)
     expect(symbol.widthMm).toBeCloseTo(10, 1)
     expect(symbol.heightMm).toBeCloseTo(10, 1)
   })
 
   it('is never smaller than 20 × 20 modules (1 cm), even for a short Lot', () => {
-    const symbol = renderDataMatrix(labelFor({ lot: 'A1' }))
+    const symbol = renderDataMatrix(labelFor({ lot: 'A1' }), 203)
     expect(symbol.columns).toBe(20)
     expect(symbol.widthMm).toBeCloseTo(10, 1)
   })
 
   it('sizes the symbol as modules × module size', () => {
-    const symbol = renderDataMatrix(labelFor({}))
+    const symbol = renderDataMatrix(labelFor({}), 203)
     expect(symbol.columns).toBe(20)
     expect(symbol.rows).toBe(20)
     expect(symbol.widthMm).toBeCloseTo(20 * MODULE_MM, 12)
@@ -59,14 +59,14 @@ describe('module size', () => {
 
   it('grows to 22 × 22 modules (≈ 11 mm) only for a Lot too long for 1 cm, up to 20 characters', () => {
     for (const lot of ['ABCDEFGHIJ0123456789', '99999999999999999999', 'WWWWWWWWWWWWWWWWWWWW', '(((((((((())))))))))']) {
-      const symbol = renderDataMatrix(labelFor({ lot }))
+      const symbol = renderDataMatrix(labelFor({ lot }), 203)
       expect(symbol.columns).toBe(22)
       expect(symbol.widthMm).toBeLessThan(11.1)
     }
   })
 
   it('returns SVG markup and the viewBox to scale it by', () => {
-    const symbol = renderDataMatrix(labelFor({}))
+    const symbol = renderDataMatrix(labelFor({}), 203)
     expect(symbol.viewBox).toMatch(/^0 0 \d+(\.\d+)? \d+(\.\d+)?$/)
     expect(symbol.markup).toMatch(/^<path /)
     expect(symbol.markup).not.toContain('<svg')

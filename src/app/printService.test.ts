@@ -264,11 +264,20 @@ describe('the driver tape check before a Tape Size prints', () => {
     expect(jobs).toHaveLength(0)
   })
 
-  it('refuses another length when the driver reports one', async () => {
+  it('prints another length with a warning, as driver papers may carry a fixed nominal length', async () => {
     const { jobs, deps } = await setup({ ok: true }, { widthMm: 24, lengthMm: 100 })
+    expect(await printTestLabel(tapeSettings, tapeSize, deps)).toMatchObject({
+      ok: true,
+      warning: 'The printer is set to 100 mm long labels; set 40 mm in its Printing preferences so each label is 40 mm.'
+    })
+    expect(jobs).toHaveLength(1)
+  })
+
+  it('refuses another tape width even when the length differs too', async () => {
+    const { jobs, deps } = await setup({ ok: true }, { widthMm: 36, lengthMm: 100 })
     expect(await printTestLabel(tapeSettings, tapeSize, deps)).toEqual({
       ok: false,
-      message: 'Test print failed: The printer is set to 24 mm tape, 100 mm long; set 24 mm tape, 40 mm long in its Printing preferences.'
+      message: 'Test print failed: The printer is set to 36 mm tape; set 24 mm in its Printing preferences.'
     })
     expect(jobs).toHaveLength(0)
   })

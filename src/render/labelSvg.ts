@@ -11,7 +11,7 @@
  */
 
 import type { Label } from '../core/label'
-import { DEFAULT_PRINTER_RESOLUTION, dotMm, renderDataMatrix, type DataMatrixSymbol, type PrinterResolution } from './dataMatrix'
+import { dotMm, renderDataMatrix, type DataMatrixSymbol, type PrinterResolution } from './dataMatrix'
 import { MM_PER_PT, textWidthMm } from './textMetrics'
 
 export interface LabelSize {
@@ -27,6 +27,8 @@ export const SYMBOL_TEXT_GAP_MM = 1.2
 /** A Lot longer than this many characters moves to its own line, so it is never cut off. */
 export const LOT_OWN_LINE_AFTER = 15
 export const FONT_FAMILY = 'Arial, Helvetica, sans-serif'
+/** Absorbs floating-point error when mm values are compared or floored, so an exact fit is not refused. */
+export const ROUNDING_TOLERANCE = 1e-9
 
 export const DETAIL_PT = 6.5
 const ITEM_CODE_PT = DETAIL_PT
@@ -77,7 +79,7 @@ export interface LabelLayout {
 }
 
 /** Positions the symbol and text of a label on a label of the given size, for a printer of `dpi`. */
-export function layoutLabel(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE, dpi: PrinterResolution = DEFAULT_PRINTER_RESOLUTION): LabelLayout {
+export function layoutLabel(label: Label, size: LabelSize, dpi: PrinterResolution): LabelLayout {
   const dataMatrix = renderDataMatrix(label, dpi)
   const lotOnOwnLine = label.lot.length > LOT_OWN_LINE_AFTER
   const { itemCodeRuns, expiryRuns, lotRuns } = gtinTextRuns(label)
@@ -127,7 +129,7 @@ export function gtinTextRuns(label: Label): { itemCodeRuns: TextRun[]; expiryRun
 }
 
 /** The label as a self-contained SVG document, `widthMm` × `heightMm` in size, for a printer of `dpi`. */
-export function renderLabelSvg(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE, dpi: PrinterResolution = DEFAULT_PRINTER_RESOLUTION): string {
+export function renderLabelSvg(label: Label, size: LabelSize, dpi: PrinterResolution): string {
   const layout = layoutLabel(label, size, dpi)
   return labelSvgDocument(size, layout.symbol, [layout.itemCodeLine, layout.expiryLine, layout.lotLine])
 }
@@ -200,7 +202,7 @@ export function snapToDot(mmValue: number, dpi: PrinterResolution): number {
 }
 
 export function floorToDot(mmValue: number, dpi: PrinterResolution): number {
-  return Math.floor(mmValue / dotMm(dpi) + 1e-9) * dotMm(dpi)
+  return Math.floor(mmValue / dotMm(dpi) + ROUNDING_TOLERANCE) * dotMm(dpi)
 }
 
 function mm(value: number): string {
@@ -215,6 +217,6 @@ const XML_ESCAPES: Readonly<Record<string, string>> = {
   "'": '&apos;'
 }
 
-function escapeXml(text: string): string {
+export function escapeXml(text: string): string {
   return text.replace(/[&<>"']/g, (character) => XML_ESCAPES[character])
 }

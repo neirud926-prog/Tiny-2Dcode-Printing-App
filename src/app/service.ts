@@ -78,16 +78,20 @@ export function createAppService(host: AppHost): PreloadApi {
     savePrinterSettings,
     printLabel: (request) =>
       exclusively(async () => {
+        const sizes = await gtinSizes()
+        if (!sizes.ok) return { ok: false, message: `Not printed: ${sizes.message}` }
         const itemList = folderReady ? await itemLists.current() : null
-        return printLabelRequest(request, folderReady ? settings : null, await gtinSizes(), itemList?.index ?? null, context, deps)
+        return printLabelRequest(request, folderReady ? settings : null, sizes.sizes, itemList?.index ?? null, context, deps)
       }),
     savePendingLabel: (request) =>
       folderReady ? savePendingLabel(request, context, deps) : Promise.resolve<SavePendingOutcome>({ ok: false, message: 'Not saved: the data folder is not ready.' }),
     listPendingLabels: listPendingLabelsNow,
     printPendingLabel: (id, packVolumeDigit) =>
       exclusively(async () => {
+        const sizes = await gtinSizes()
+        if (!sizes.ok) return { ok: false, message: `Not printed: ${sizes.message}` }
         const itemList = folderReady ? await itemLists.current() : null
-        return printPendingLabel(id, packVolumeDigit, folderReady ? settings : null, await gtinSizes(), itemList?.index ?? null, context, deps)
+        return printPendingLabel(id, packVolumeDigit, folderReady ? settings : null, sizes.sizes, itemList?.index ?? null, context, deps)
       }),
     deletePendingLabel: (id) =>
       folderReady ? deletePendingLabel(dataFolder, id) : Promise.resolve<DeletePendingOutcome>({ ok: false, message: 'The data folder is not ready.' }),
@@ -128,10 +132,15 @@ export function createAppService(host: AppHost): PreloadApi {
     }
   }
 
-  /** The Label Sizes a GTIN Label is checked against: the Small Label alone while the list cannot be read. */
-  async function gtinSizes(): Promise<readonly LabelSizeEntry[]> {
+  /**
+   * The Label Sizes a GTIN Label is checked against. While the list cannot be read, the Small Label
+   * alone if it is the one loaded; otherwise the reason it cannot be read.
+   */
+  async function gtinSizes(): Promise<{ ok: true; sizes: readonly LabelSizeEntry[] } | { ok: false; message: string }> {
     const sizes = folderReady ? await readLabelSizes(dataFolder) : null
-    return sizes?.ok ? sizes.sizes : [SMALL_LABEL]
+    if (sizes?.ok) return sizes
+    if (sizes === null || settings === null || settings.labelSizeId === SMALL_LABEL.id) return { ok: true, sizes: [SMALL_LABEL] }
+    return { ok: false, message: `the Label Size list could not be read: ${sizes.message}` }
   }
 
   function notReady(): Promise<{ ok: false; message: string }> {

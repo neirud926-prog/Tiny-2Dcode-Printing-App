@@ -17,17 +17,22 @@ export interface PrintSettings {
   readonly printerName: string
   /** Sizes the 2D code's modules in whole dots. */
   readonly printerResolution: PrinterResolution
-  readonly labelSize: LabelSize
+  /** On tape (`kind: 'tape'`) the job uses the driver's paper and turns the label to run along the tape. */
+  readonly labelSize: FitSize
   /** Moves the print right (positive) or left, in mm; always whole printer dots. */
   readonly offsetXmm: number
   /** Moves the print down (positive) or up, in mm; always whole printer dots. */
   readonly offsetYmm: number
-  /** The label is on tape: the job uses the driver's paper and turns the label to run along the tape. */
-  readonly onTape?: boolean
 }
 
 /** A die-cut label, or continuous tape (a Tape Size). */
 export type LabelSizeKind = 'label' | 'tape'
+
+/**
+ * A Label Size as layout sees it: on a Tape Size (`kind: 'tape'`, `heightMm` the tape width) content
+ * stays inside the printable band; without a kind, a die-cut label.
+ */
+export type FitSize = LabelSize & { readonly kind?: LabelSizeKind }
 
 /**
  * A Label Size: a named label roll in the list shared by every PC. The Small Label is built in,
@@ -87,14 +92,13 @@ export function printSettingsFor(settings: PcSettings, size: LabelSizeEntry): Pr
   return {
     printerName: settings.printerName,
     printerResolution: settings.printerResolution,
-    labelSize: { widthMm: size.widthMm, heightMm: size.heightMm },
-    ...offsetsFor(settings, size.id),
-    ...(size.kind === 'tape' ? { onTape: true } : {})
+    labelSize: { widthMm: size.widthMm, heightMm: size.heightMm, kind: size.kind },
+    ...offsetsFor(settings, size.id)
   }
 }
 
 /** e.g. `34.4 × 25 mm`, or `24 mm tape × 40 mm` for a Tape Size. */
-export function formatLabelSizeMm(size: LabelSize & { readonly kind?: LabelSizeKind }): string {
+export function formatLabelSizeMm(size: FitSize): string {
   return size.kind === 'tape' ? tapeSizeName(size.heightMm, size.widthMm) : `${size.widthMm} × ${size.heightMm} mm`
 }
 

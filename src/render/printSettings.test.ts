@@ -133,7 +133,7 @@ describe('printSettingsFor', () => {
   it('gives a print job the size and that size\'s offsets', () => {
     const shelf = { id: 'shelf', name: 'Shelf', kind: 'label', widthMm: 50, heightMm: 30 } as const
     const settings = { ...valid, offsets: { ...valid.offsets, shelf: { offsetXmm: DOT_MM, offsetYmm: 0 } } }
-    expect(printSettingsFor(settings, shelf)).toEqual({ printerName: valid.printerName, printerResolution: 203, labelSize: { widthMm: 50, heightMm: 30 }, offsetXmm: DOT_MM, offsetYmm: 0 })
-    expect(printSettingsFor(settings, SMALL_LABEL)).toEqual({ printerName: valid.printerName, printerResolution: 203, labelSize: { widthMm: 34.4, heightMm: 25 }, offsetXmm: 0, offsetYmm: 0 })
+    expect(printSettingsFor(settings, shelf)).toEqual({ printerName: valid.printerName, printerResolution: 203, labelSize: { widthMm: 50, heightMm: 30, kind: 'label' }, offsetXmm: DOT_MM, offsetYmm: 0 })
+    expect(printSettingsFor(settings, SMALL_LABEL)).toEqual({ printerName: valid.printerName, printerResolution: 203, labelSize: { widthMm: 34.4, heightMm: 25, kind: 'label' }, offsetXmm: 0, offsetYmm: 0 })
   })
 })

@@ -58,6 +58,10 @@ _Avoid_: paper size, label roll setting
 A Label Size for continuous tape: a tape width (3.5, 6, 9, 12, 18, 24 or 36 mm, the cassette loaded) and a label length; only a band narrower than the tape can be printed on.
 _Avoid_: tape label size, cassette size
 
+**Printable band**:
+The strip across a tape that the printer can print on, narrower than the tape; everything on a Tape Size label must lie inside it.
+_Avoid_: print area, safe zone
+
 **Printer resolution**:
 The dots per inch of a PC's printer (203, 300 or 360); a 2D code's module is a whole number of dots at it.
 _Avoid_: dpi setting, print quality
@@ -89,6 +93,10 @@ _Avoid_: 2D code, DM code
 **Plain code**:
 A DataMatrix or QR code holding exactly the characters staff typed, with no AIs; the symbology of a Custom Label.
 _Avoid_: free code, non-GS1 barcode
+
+**Module size**:
+The size of one square of a code: Small, Medium or Large, each a whole number of printer dots at the Printer resolution.
+_Avoid_: dots per module, module dots, code size
 
 **AI (Application Identifier)**:
 A GS1 numeric prefix naming the data field that follows: 01 GTIN, 17 expiry, 10 Lot.

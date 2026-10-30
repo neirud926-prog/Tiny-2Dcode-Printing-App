@@ -4,7 +4,7 @@ status: accepted
 
 # Tape prints take the tape from the driver's Printing preferences
 
-For a Tape Size the app sends no paper size: the tape width comes from the printer driver's own Printing preferences (set once per PC, e.g. 24 mm on the Brother PT-P900W), and the app only lays the label out across the tape's printable band. Before printing it reads the driver's paper width and refuses on a known mismatch; when the driver reports no usable width it prints with a warning.
+For a Tape Size the app sends no paper size: the tape width comes from the printer driver's own Printing preferences (set once per PC, e.g. 24 mm on the Brother PT-P900W), and the app only lays the label out across the tape's printable band. Before printing it reads the driver's paper width and refuses on a known tape width mismatch; when the driver reports no usable width it prints with a warning.
 
 ## Why
 
@@ -15,6 +15,7 @@ For a Tape Size the app sends no paper size: the tape width comes from the print
 ## Consequences
 
 - Each PC with a tape printer must have the right tape width set in Printing preferences; the README documents it.
+- Only a tape width mismatch refuses; a length difference only warns, since a driver's paper may carry a fixed nominal length.
 - Die-cut Label Sizes keep the custom page size, which works on the pharmacy's label printers.
 
 ## Considered options

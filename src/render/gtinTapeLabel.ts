@@ -26,23 +26,28 @@ import {
   labelSvgDocument,
   line,
   renderLabelSvg,
+  ROUNDING_TOLERANCE,
   SIDE_PADDING_MM,
   snapToDot,
   SYMBOL_TEXT_GAP_MM,
   type LabelLayout,
   type LabelSize
 } from './labelSvg'
-import { formatLabelSizeMm, SMALL_LABEL, type LabelSizeEntry, type LabelSizeKind } from './printSettings'
+import { formatLabelSizeMm, SMALL_LABEL, type FitSize, type LabelSizeEntry } from './printSettings'
+import { isTapeWidthMm, type TapeWidthMm } from './tapeSize'
 
 /** The tape widths a GTIN Label prints on: the 1 cm code with its quiet zone fits their band. */
-export const GTIN_TAPE_WIDTHS_MM: readonly number[] = [18, 24, 36]
+export const GTIN_TAPE_WIDTHS_MM: readonly TapeWidthMm[] = [18, 24, 36]
+
+/** Where a GTIN Label prints, in words: `the Small Label (34.4 × 25 mm) or on 18, 24 or 36 mm tape`. */
+export const GTIN_LABEL_SIZES_TEXT = `the Small Label (${formatLabelSizeMm(SMALL_LABEL)}) or on ${GTIN_TAPE_WIDTHS_MM.slice(0, -1).join(', ')} or ${GTIN_TAPE_WIDTHS_MM.at(-1)} mm tape`
 
 /** Why a GTIN Label is refused on any other Label Size. */
-export const GTIN_LABEL_SIZE_REFUSAL = `GTIN Labels print on the Small Label (${formatLabelSizeMm(SMALL_LABEL)}) or on 18, 24 or 36 mm tape. Change the label in Settings.`
+export const GTIN_LABEL_SIZE_REFUSAL = `GTIN Labels print on ${GTIN_LABEL_SIZES_TEXT}. Change the label in Settings.`
 
 /** Whether a GTIN Label prints on a Label Size: the Small Label, or a Tape Size of 18, 24 or 36 mm. */
 export function isGtinLabelSize(size: Pick<LabelSizeEntry, 'id' | 'kind' | 'heightMm'>): boolean {
-  return size.id === SMALL_LABEL.id || (size.kind === 'tape' && GTIN_TAPE_WIDTHS_MM.includes(size.heightMm))
+  return size.id === SMALL_LABEL.id || (size.kind === 'tape' && isTapeWidthMm(size.heightMm) && GTIN_TAPE_WIDTHS_MM.includes(size.heightMm))
 }
 
 /** Why a GTIN Label cannot print on the Label Size `labelSizeId` (looked up in `sizes`), or null. */
@@ -91,12 +96,12 @@ export function layoutGtinTapeLabel(label: Label, size: LabelSize, dpi: PrinterR
 export function gtinTapeLengthProblem(label: Label, size: LabelSizeEntry, dpi: PrinterResolution): string | null {
   if (size.kind !== 'tape') return null
   const { minLengthMm } = layoutGtinTapeLabel(label, size, dpi)
-  if (minLengthMm <= size.widthMm + 1e-9) return null
-  return `This GTIN Label needs tape at least ${Math.ceil(minLengthMm - 1e-9)} mm long; the loaded Tape Size is ${size.widthMm} mm. Add a longer Tape Size in Settings.`
+  if (minLengthMm <= size.widthMm + ROUNDING_TOLERANCE) return null
+  return `This GTIN Label needs tape at least ${Math.ceil(minLengthMm - ROUNDING_TOLERANCE)} mm long; the loaded Tape Size is ${size.widthMm} mm. Add a longer Tape Size in Settings.`
 }
 
 /** The GTIN Label as a self-contained SVG: the tape layout on a Tape Size, the Small Label layout otherwise. */
-export function renderGtinLabelSvg(label: Label, size: LabelSize & { readonly kind?: LabelSizeKind }, dpi: PrinterResolution): string {
+export function renderGtinLabelSvg(label: Label, size: FitSize, dpi: PrinterResolution): string {
   if (size.kind !== 'tape') return renderLabelSvg(label, size, dpi)
   const layout = layoutGtinTapeLabel(label, size, dpi)
   return labelSvgDocument(size, layout.symbol, [layout.itemCodeLine, layout.expiryLine, layout.lotLine])

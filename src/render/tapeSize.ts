@@ -6,7 +6,7 @@
  * Pure: no Node, DOM or Electron.
  */
 
-import { FONT_FAMILY } from './labelSvg'
+import { escapeXml, FONT_FAMILY } from './labelSvg'
 
 /** The tape widths a cassette can hold, in mm. */
 export const TAPE_WIDTHS_MM = [3.5, 6, 9, 12, 18, 24, 36] as const
@@ -50,8 +50,4 @@ export function renderTapeTestSvg(size: { readonly name: string; readonly widthM
 
 function round(value: number): number {
   return Number(value.toFixed(4))
-}
-
-function escapeXml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }

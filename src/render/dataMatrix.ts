@@ -83,7 +83,7 @@ export interface DataMatrixSymbol {
 }
 
 /** Draws the GS1 DataMatrix for a label, with Medium modules at `dpi`, {@link MIN_SYMBOL_SIZE} at least. */
-export function renderDataMatrix(data: SymbolData, dpi: PrinterResolution = DEFAULT_PRINTER_RESOLUTION): DataMatrixSymbol {
+export function renderDataMatrix(data: SymbolData, dpi: PrinterResolution): DataMatrixSymbol {
   const options = dataMatrixOptions(data)
   const module = moduleMm(GTIN_MODULE_SIZE, dpi)
   try {

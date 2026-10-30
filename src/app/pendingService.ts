@@ -47,8 +47,9 @@ export async function savePendingLabel(input: unknown, context: PrintContext, de
 }
 
 /**
- * Prints a Pending Label whose Item Code is now listed, on the Label Sizes (`sizes`, the list) any GTIN Label prints on. The label is claimed first (removed from
- * `pending.dat`), so another PC cannot print it too; if it does not print, it is put back.
+ * Prints a Pending Label whose Item Code is now listed, on the Label Sizes any GTIN Label prints on
+ * (`sizes` is the Label Size list). The label is claimed first (removed from `pending.dat`), so
+ * another PC cannot print it too; if it does not print, it is put back.
  */
 export async function printPendingLabel(
   id: unknown,

@@ -39,8 +39,7 @@ const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'"
 
 /** The print job for `label` (its copies) on this PC's printer and label roll; on tape, in the GTIN tape layout. */
 export function buildLabelPrintJob(label: Label, settings: PrintSettings): LabelPrintJob {
-  const size = { ...settings.labelSize, kind: settings.onTape === true ? ('tape' as const) : ('label' as const) }
-  return printJobFor(renderGtinLabelSvg(label, size, settings.printerResolution), label.copies, settings)
+  return printJobFor(renderGtinLabelSvg(label, settings.labelSize, settings.printerResolution), label.copies, settings)
 }
 
 /** The print job for a Custom Label (its copies) on this PC's printer, with the offsets for its size. */
@@ -63,7 +62,7 @@ function printJobFor(svg: string, copies: number, settings: PrintSettings): Labe
   const w = cssMm(widthMm)
   const h = cssMm(heightMm)
   const offset = `translate(${settings.offsetXmm.toFixed(4)}mm,${settings.offsetYmm.toFixed(4)}mm)`
-  const onTape = settings.onTape === true
+  const onTape = settings.labelSize.kind === 'tape'
   const style =
     (onTape
       ? `@page{margin:0}` +

@@ -17,7 +17,7 @@ import {
   type PcSettings,
   type PcSettingsField
 } from '../../render/printSettings'
-import { gtinLabelSizeProblem } from '../../render/gtinTapeLabel'
+import { GTIN_LABEL_SIZES_TEXT, gtinLabelSizeProblem } from '../../render/gtinTapeLabel'
 import { TAPE_WIDTHS_MM, tapeSizeName } from '../../render/tapeSize'
 import { AppHeader } from './AppHeader'
 import { OutcomeMessage } from './OutcomeMessage'
@@ -263,7 +263,7 @@ export function PrinterSettingsScreen({
               </select>
             </div>
             <div className="field__messages">
-              <p className="message message--hint">The printer's dots per inch: 203 for the Zebra label printers, 360 for the Brother PT-P900W. 2D codes are made of whole dots at it.</p>
+              <p className="message message--hint">The printer's dots per inch: 203 for the Zebra label printers, 360 for the Brother PT-P900W. DataMatrix and QR codes are made of whole dots at it.</p>
             </div>
           </div>
 
@@ -287,7 +287,7 @@ export function PrinterSettingsScreen({
             <div className="field__messages" aria-live="polite">
               {sizeMissing && <p className="message message--error">This label size is no longer in the list. Choose the label in this printer.</p>}
               {!sizeMissing && gtinLabelSizeProblem(labelSizeId, sizes) && (
-                <p className="message message--warning">GTIN Labels print only on the Small Label ({formatLabelSizeMm(SMALL_LABEL)}) or on 18, 24 or 36 mm tape.</p>
+                <p className="message message--warning">GTIN Labels print only on {GTIN_LABEL_SIZES_TEXT}.</p>
               )}
               {mode === 'setup' && sizesMessage && <p className="message message--error">{sizesMessage}</p>}
             </div>
@@ -437,7 +437,7 @@ function LabelSizesPanel({
   return (
     <section className="panel settings" aria-label="Label Sizes">
       <h2>Label Sizes</h2>
-      <p className="settings__intro">Label rolls and tape, shared by every PC. The Small Label is built in.</p>
+      <p className="settings__intro">Die-cut Label Sizes and Tape Sizes, shared by every PC. The Small Label is built in.</p>
       {message && <p className="message message--error">{message}</p>}
       <ul className="label-sizes">
         {sizes.map((size) => (

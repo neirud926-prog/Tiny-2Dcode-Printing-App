@@ -8,7 +8,7 @@ import { lotPicker, type LotChoice } from '../../core/lotPicker'
 import { itemCodeFromScan, type ScanSource } from '../../core/scanInput'
 import { isStockOnhandForToday, type StockLot, type StockOnhandInfo } from '../../core/stockOnhand'
 import type { ItemLookup, PrintOutcome } from '../../preload/api'
-import { gtinLabelSizeProblem, gtinTapeLengthProblem } from '../../render/gtinTapeLabel'
+import { GTIN_LABEL_SIZE_REFUSAL, gtinTapeLengthProblem, isGtinLabelSize } from '../../render/gtinTapeLabel'
 import { SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../../render/printSettings'
 import { LabelPreview } from './LabelPreview'
 import { LotPicker, type LotPickerView } from './LotPicker'
@@ -99,7 +99,7 @@ export function LabelScreen({
   hidden = false
 }: LabelScreenProps): React.JSX.Element {
   const today = useToday()
-  const sizes = useLabelSizes(settings.labelSizeId)
+  const sizes = useLabelSizes(settings, hidden)
   const [values, setValues] = useState<FormValues>(EMPTY_FORM)
   const [touched, setTouched] = useState<ReadonlySet<TouchField>>(new Set())
   const [lookup, setLookup] = useState<Lookup | null>(null)
@@ -591,7 +591,7 @@ export function LabelScreen({
 
         <LabelPreview
           result={result}
-          size={sizes?.find((entry) => entry.id === settings.labelSizeId) ?? SMALL_LABEL}
+          size={sizes === null ? null : (sizes.find((entry) => entry.id === settings.labelSizeId) ?? SMALL_LABEL)}
           dpi={settings.printerResolution}
           sizeProblem={gtinSizeProblem(result, settings, sizes)}
         />
@@ -621,10 +621,14 @@ export function LabelScreen({
   )
 }
 
-/** The Label Size list, read again when another size is loaded; null until read. */
-function useLabelSizes(labelSizeId: string): readonly LabelSizeEntry[] | null {
+/**
+ * The Label Size list, read again whenever the tab is shown or this PC's settings change (sizes may
+ * have been added or changed in Settings, or on another PC); null until first read.
+ */
+function useLabelSizes(settings: PcSettings, hidden: boolean): readonly LabelSizeEntry[] | null {
   const [sizes, setSizes] = useState<readonly LabelSizeEntry[] | null>(null)
   useEffect(() => {
+    if (hidden) return
     let current = true
     void window.api.listLabelSizes().then((list) => {
       if (current) setSizes(list.ok ? list.sizes : [SMALL_LABEL])
@@ -632,7 +636,7 @@ function useLabelSizes(labelSizeId: string): readonly LabelSizeEntry[] | null {
     return () => {
       current = false
     }
-  }, [labelSizeId])
+  }, [settings, hidden])
   return sizes
 }
 
@@ -640,8 +644,7 @@ function useLabelSizes(labelSizeId: string): readonly LabelSizeEntry[] | null {
 function gtinSizeProblem(result: BuildLabelResult, settings: PcSettings, sizes: readonly LabelSizeEntry[] | null): string | null {
   if (sizes === null) return null
   const size = sizes.find((entry) => entry.id === settings.labelSizeId)
-  const sizeProblem = gtinLabelSizeProblem(settings.labelSizeId, sizes)
-  if (sizeProblem || !size) return sizeProblem
+  if (!size || !isGtinLabelSize(size)) return GTIN_LABEL_SIZE_REFUSAL
   return result.ok ? gtinTapeLengthProblem(result.label, size, settings.printerResolution) : null
 }
 

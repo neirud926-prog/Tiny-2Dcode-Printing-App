@@ -262,6 +262,25 @@ describe('the loaded Label Size', () => {
     expect(await api.printLabel(request)).toEqual({ ok: false, message: refusal })
     expect(jobs).toHaveLength(0)
   })
+
+  it('refuses a GTIN Label with the real cause when the Label Size list cannot be read, but the Small Label still prints', async () => {
+    const folder = await tempFolder()
+    const { api, jobs } = await pc(folder, 'PHARM-01', { chosenFile: itemListFixture })
+    expect((await api.importItemList()).status).toBe('imported')
+    const tape = await addTape(api, 24, 40)
+    expect((await api.savePrinterSettings(settingsFor(tape))).ok).toBe(true)
+    const small = await pc(folder, 'PHARM-02')
+    expect((await small.api.savePrinterSettings(settingsFor(SMALL_LABEL.id))).ok).toBe(true)
+    await writeFile(join(folder, 'labelsizes.dat'), 'damaged')
+
+    expect(await api.printLabel(request)).toEqual({
+      ok: false,
+      message: 'Not printed: the Label Size list could not be read: The Label Sizes (labelsizes.dat) were changed outside the app.'
+    })
+    expect(jobs).toHaveLength(0)
+    expect(await small.api.printLabel({ ...request, expiry: '31122030' })).toMatchObject({ ok: true })
+    expect(small.jobs).toHaveLength(1)
+  })
 })
 
 describe('GTIN Labels on tape', () => {

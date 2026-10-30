@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
 import type { BuildLabelResult, LabelField } from '../../core/label'
-import { DEFAULT_PRINTER_RESOLUTION, type PrinterResolution } from '../../render/dataMatrix'
+import type { PrinterResolution } from '../../render/dataMatrix'
 import { renderGtinLabelSvg } from '../../render/gtinTapeLabel'
-import { DEFAULT_LABEL_SIZE, type LabelSize } from '../../render/labelSvg'
-import type { LabelSizeKind } from '../../render/printSettings'
+import type { LabelSize } from '../../render/labelSvg'
+import type { FitSize } from '../../render/printSettings'
 
 /** The preview shows the label this many times its printed size (shrinking if the window is narrow). */
 const PREVIEW_SCALE = 4
@@ -19,22 +19,22 @@ const FIELD_NAMES: Record<LabelField, string> = {
 
 interface LabelPreviewProps {
   result: BuildLabelResult
-  /** The Label Size loaded in this PC's printer: on tape, the GTIN tape layout. */
-  size?: LabelSize & { readonly kind?: LabelSizeKind }
+  /** The Label Size loaded in this PC's printer (on tape, the GTIN tape layout); null while the list is read. */
+  size: FitSize | null
   /** This PC's Printer resolution, which sizes the code's modules. */
-  dpi?: PrinterResolution
+  dpi: PrinterResolution
   /** Why the label would not print on the loaded size, if it would not. */
   sizeProblem?: string | null
 }
 
 /** The label as it will print, at real proportions, and the self-check line saying what its data decodes to. */
-export function LabelPreview({ result, size = DEFAULT_LABEL_SIZE, dpi = DEFAULT_PRINTER_RESOLUTION, sizeProblem = null }: LabelPreviewProps): React.JSX.Element {
-  const svg = useMemo(() => (result.ok ? renderGtinLabelSvg(result.label, size, dpi) : null), [result, size, dpi])
+export function LabelPreview({ result, size, dpi, sizeProblem = null }: LabelPreviewProps): React.JSX.Element {
+  const svg = useMemo(() => (result.ok && size ? renderGtinLabelSvg(result.label, size, dpi) : null), [result, size, dpi])
 
   return (
     <section className="panel preview" aria-label="Label preview">
       <h2>Preview</h2>
-      <LabelFrame svg={svg} size={size} />
+      {size && <LabelFrame svg={svg} size={size} />}
       {sizeProblem && <p className="message message--warning">{sizeProblem}</p>}
       <SelfCheckLine result={result} />
       {result.ok && (

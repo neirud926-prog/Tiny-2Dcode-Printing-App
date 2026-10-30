@@ -17,7 +17,7 @@ import type { Template } from '../core/template'
 import { customPrintLogEntryFor, printLogEntryFor, type PrintLogEntry } from '../data/printLog'
 import { buildCustomLabel, templateSizeProblem, type CustomLabelRequest } from '../render/customLabel'
 import { buildCustomLabelPrintJob, buildLabelPrintJob, buildTapeTestPrintJob, sampleLabelRequest, type LabelPrintJob } from '../render/printJob'
-import { GTIN_LABEL_SIZE_REFUSAL, gtinLabelSizeProblem, gtinTapeLengthProblem } from '../render/gtinTapeLabel'
+import { GTIN_LABEL_SIZE_REFUSAL, gtinTapeLengthProblem, isGtinLabelSize } from '../render/gtinTapeLabel'
 import { printSettingsFor, type LabelSizeEntry, type PcSettings, type PrintSettings } from '../render/printSettings'
 import type { PrinterChoice, PrintOutcome } from '../preload/api'
 
@@ -56,7 +56,7 @@ export async function printLabelRequest(
 ): Promise<PrintOutcome> {
   if (settings === null) return refused("set up this PC's printer first.")
   const size = sizes.find((entry) => entry.id === settings.labelSizeId)
-  if (!size || gtinLabelSizeProblem(size.id, sizes)) return refused(GTIN_LABEL_SIZE_REFUSAL)
+  if (!size || !isGtinLabelSize(size)) return refused(GTIN_LABEL_SIZE_REFUSAL)
   if (itemList === null) return refused('import the Item List first.')
   if (!isLabelRequest(request)) return refused('the label request is not valid.')
 
@@ -177,8 +177,8 @@ function checkedLabel(request: LabelRequest, today: string): { ok: true; label: 
 
 /**
  * Sends `job`, printed with `settings`, to the printer; every print goes through here. On a Tape Size
- * the driver's default paper is checked first (ADR 0004): a known mismatch is refused and nothing is
- * sent; when the driver reports nothing the job prints with a warning.
+ * the driver's default paper is checked first (ADR 0004): a known tape width mismatch is refused and
+ * nothing is sent; a known length mismatch, or a driver that reports nothing, prints with a warning.
  */
 async function send(
   job: LabelPrintJob,
@@ -186,7 +186,7 @@ async function send(
   deps: Pick<PrintServiceDeps, 'readDefaultPaper' | 'sendToPrinter'>
 ): Promise<{ ok: true; warning: string | null } | { ok: false; message: string }> {
   let warning: string | null = null
-  if (settings.onTape) {
+  if (settings.labelSize.kind === 'tape') {
     const tape = await tapeCheck(settings, deps)
     if (!tape.ok) return tape
     warning = tape.warning
@@ -203,7 +203,10 @@ async function send(
 /** Driver widths and lengths are in tenths of a mm and may round (23.9 for 24 mm tape). */
 const PAPER_TOLERANCE_MM = 0.5
 
-/** Checks the driver's default paper against the Tape Size in `settings` (length × tape width). */
+/**
+ * Checks the driver's default paper against the Tape Size in `settings` (length × tape width): only
+ * the tape width refuses, since driver papers may carry a fixed nominal length.
+ */
 async function tapeCheck(
   settings: PrintSettings,
   deps: Pick<PrintServiceDeps, 'readDefaultPaper'>
@@ -218,15 +221,15 @@ async function tapeCheck(
   if (paper === null) {
     return { ok: true, warning: `Could not check the tape width; check the printer is set to ${tapeWidthMm} mm tape.` }
   }
-  const widthOff = Math.abs(paper.widthMm - tapeWidthMm) > PAPER_TOLERANCE_MM
-  const lengthOff = paper.lengthMm !== null && Math.abs(paper.lengthMm - lengthMm) > PAPER_TOLERANCE_MM
-  if (lengthOff) {
+  if (Math.abs(paper.widthMm - tapeWidthMm) > PAPER_TOLERANCE_MM) {
+    return { ok: false, message: `The printer is set to ${mm(paper.widthMm)} mm tape; set ${tapeWidthMm} mm in its Printing preferences.` }
+  }
+  if (paper.lengthMm !== null && Math.abs(paper.lengthMm - lengthMm) > PAPER_TOLERANCE_MM) {
     return {
-      ok: false,
-      message: `The printer is set to ${mm(paper.widthMm)} mm tape, ${mm(paper.lengthMm!)} mm long; set ${tapeWidthMm} mm tape, ${lengthMm} mm long in its Printing preferences.`
+      ok: true,
+      warning: `The printer is set to ${mm(paper.lengthMm)} mm long labels; set ${lengthMm} mm in its Printing preferences so each label is ${lengthMm} mm.`
     }
   }
-  if (widthOff) return { ok: false, message: `The printer is set to ${mm(paper.widthMm)} mm tape; set ${tapeWidthMm} mm in its Printing preferences.` }
   return { ok: true, warning: null }
 }
 
