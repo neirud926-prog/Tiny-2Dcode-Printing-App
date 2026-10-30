@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 128" width="400" height="128" font-family="Segoe UI, Arial, sans-serif" font-size="12">
+  <rect x="0.5" y="0.5" width="399" height="127" rx="6" fill="#f6f7f9" stroke="#c9ced6"/>
+  <!-- The printer -->
+  <rect x="24" y="34" width="76" height="40" rx="5" fill="#ffffff" stroke="#5b6472" stroke-width="1.5"/>
+  <rect x="36" y="24" width="52" height="12" fill="#ffffff" stroke="#5b6472" stroke-width="1.5"/>
+  <rect x="44" y="74" width="36" height="14" fill="#ffffff" stroke="#5b6472" stroke-width="1.5"/>
+  <circle cx="88" cy="46" r="3" fill="#2f9e44"/>
+  <text x="62" y="106" text-anchor="middle" fill="#1f2933">Brother PT-P900W</text>
+  <text x="62" y="120" text-anchor="middle" fill="#5b6472" font-size="11">right-click</text>
+  <!-- The menu -->
+  <rect x="140" y="12" width="176" height="104" rx="4" fill="#ffffff" stroke="#9aa3ae"/>
+  <text x="154" y="32" fill="#5b6472">See what's printing</text>
+  <text x="154" y="54" fill="#5b6472">Set as default printer</text>
+  <rect x="144" y="64" width="168" height="22" rx="3" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.5"/>
+  <text x="154" y="79" fill="#1d4ed8" font-weight="bold">Printing preferences</text>
+  <text x="154" y="104" fill="#9aa3ae">Printer properties</text>
+  <line x1="152" y1="100" x2="262" y2="100" stroke="#c92a2a" stroke-width="1.5"/>
+  <!-- Notes -->
+  <path d="M 322 75 L 334 75" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="338" y="79" fill="#1d4ed8" font-weight="bold">this one</text>
+  <path d="M 322 100 L 334 100" stroke="#c92a2a" stroke-width="2"/>
+  <text x="338" y="104" fill="#c92a2a">not this</text>
+</svg>

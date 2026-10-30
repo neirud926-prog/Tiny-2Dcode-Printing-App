@@ -9,7 +9,7 @@ import { DOT_MM } from '../render/dataMatrix'
 import type { LabelPrintJob } from '../render/printJob'
 import { SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import type { DriverPaper } from './host'
-import { printLabelRequest, printTestLabel, printerProblem, type DriverResult, type PrintServiceDeps } from './printService'
+import { printLabelRequest, printTestLabel, printerProblem, showsPrinterGuide, type DriverResult, type PrintServiceDeps } from './printService'
 
 const request: LabelRequest = { itemCode: 'para18', packVolumeDigit: 2, expiry: '31122027', lot: '2512172-1', copies: 3 }
 
@@ -314,5 +314,32 @@ describe('printerProblem', () => {
 
   it('names a printer that is not installed', () => {
     expect(printerProblem('Zebra', installed)).toBe('The printer "Zebra" is not installed on this PC. Choose another printer.')
+  })
+})
+
+describe('showsPrinterGuide: the "How to set the printer" link', () => {
+  it('shows with a tape width refusal, a length warning and an unchecked tape', async () => {
+    for (const paper of [{ widthMm: 36, lengthMm: null }, { widthMm: 24, lengthMm: 100 }, null]) {
+      const { deps } = await setup({ ok: true }, paper)
+      expect(showsPrinterGuide(await printTestLabel(tapeSettings, tapeSize, deps))).toBe(true)
+    }
+  })
+
+  it('shows when the tape warning comes with a print log warning', () => {
+    expect(
+      showsPrinterGuide({
+        ok: true,
+        message: 'Printed 1 label on Brother PT-P900W.',
+        warning: 'Could not check the tape width; check the printer is set to 24 mm tape. The print log could not be written: disk full'
+      })
+    ).toBe(true)
+  })
+
+  it('does not show for a tape that matches, other refusals or no outcome', async () => {
+    const { deps } = await setup({ ok: false, reason: 'Invalid printer settings' }, { widthMm: 24, lengthMm: 40 })
+    expect(showsPrinterGuide(await printTestLabel(tapeSettings, tapeSize, (await setup({ ok: true }, { widthMm: 24, lengthMm: 40 })).deps))).toBe(false)
+    expect(showsPrinterGuide(await printTestLabel(tapeSettings, tapeSize, deps))).toBe(false)
+    expect(showsPrinterGuide({ ok: false, message: "Not printed: set up this PC's printer first." })).toBe(false)
+    expect(showsPrinterGuide(null)).toBe(false)
   })
 })
