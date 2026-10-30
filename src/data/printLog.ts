@@ -1,12 +1,14 @@
 /**
  * The print log: one CSV file per PC per month, `print-log-YYYY-MM-<PC>.csv`, append-only, one line
- * per print, GTIN or Custom Label. Each PC writes only its own files, so PCs sharing a log folder never write to the same
+ * per print, GTIN, Custom or Topup Label (logged as Custom). Each PC writes only its own files, so PCs sharing a log folder never write to the same
  * file; each line is a single append, so lines never interleave.
  */
 
 import type { Label } from '../core/label'
 import { packVolumeMlForDigit } from '../core/internalGtin'
+import type { Symbology } from '../core/template'
 import type { CustomLabel } from '../render/customLabel'
+import { TOPUP_TEMPLATE_NAME, type TopupLabel } from '../render/topupLabel'
 import { appendLogLine, csvLine, localDateTime, monthlyLogFileName } from './csvLog'
 
 export const PRINT_LOG_HEADER: readonly string[] = [
@@ -23,7 +25,9 @@ export const PRINT_LOG_HEADER: readonly string[] = [
   'Kind',
   'Template',
   'Code data',
-  'Text'
+  'Text',
+  // Added in v0.5.
+  'Code type'
 ]
 
 export interface PrintLogEntry {
@@ -45,6 +49,8 @@ export interface PrintLogEntry {
   readonly codeData: string
   /** A Custom Label's text lines, joined with " | ". */
   readonly text: string
+  /** A Custom Label's code: `QR` or `DataMatrix`; empty for a GTIN Label. */
+  readonly codeType: string
 }
 
 type LogContext = { at: Date; windowsUser: string; pcName: string }
@@ -63,7 +69,8 @@ export function printLogEntryFor(label: Label, context: LogContext): PrintLogEnt
     kind: 'GTIN',
     template: '',
     codeData: '',
-    text: ''
+    text: '',
+    codeType: ''
   }
 }
 
@@ -80,9 +87,30 @@ export function customPrintLogEntryFor(label: CustomLabel, context: LogContext):
     kind: 'Custom',
     template: label.templateName,
     codeData: label.codeValue,
-    text: label.texts.join(' | ')
+    text: label.texts.join(' | '),
+    codeType: CODE_TYPE_NAMES[label.symbology]
   }
 }
+
+/** The log entry for a printed Topup Label: a Custom Label from the Template `Topup`, with its Item Code. */
+export function topupPrintLogEntryFor(label: TopupLabel, context: LogContext): PrintLogEntry {
+  return {
+    ...context,
+    itemCode: label.itemCode,
+    packVolumeMl: null,
+    internalGtin: '',
+    expiry: '',
+    lot: '',
+    copies: label.copies,
+    kind: 'Custom',
+    template: TOPUP_TEMPLATE_NAME,
+    codeData: label.content,
+    text: label.itemCode,
+    codeType: CODE_TYPE_NAMES[label.symbology]
+  }
+}
+
+const CODE_TYPE_NAMES: Readonly<Record<Symbology, string>> = { qr: 'QR', datamatrix: 'DataMatrix' }
 
 /** `print-log-YYYY-MM-<PC>.csv`, by the local month of `at`. */
 export function printLogFileName(pcName: string, at: Date): string {
@@ -104,7 +132,8 @@ export function printLogLine(entry: PrintLogEntry): string {
     entry.kind,
     entry.template,
     entry.codeData,
-    entry.text
+    entry.text,
+    entry.codeType
   ])
 }
 

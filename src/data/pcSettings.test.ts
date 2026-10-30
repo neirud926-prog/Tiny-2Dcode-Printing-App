@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DOT_MM } from '../render/dataMatrix'
-import { SMALL_LABEL, type PcSettings } from '../render/printSettings'
+import { SMALL_LABEL, TOPUP_TAPE_SIZE, type PcSettings } from '../render/printSettings'
 import { readLabelSizes } from './labelSizeStore'
 import { defaultLogFolder, loadPcSettings, pcNameFromHostname, pcSettingsPath, resolveLogFolder, savePcSettings } from './pcSettings'
 import { writeSealed } from './sealed'
@@ -96,7 +96,7 @@ describe('upgrading v0.2 settings', () => {
       status: 'ok',
       settings: { printerName: 'ZDesigner GX420t', printerResolution: 203, labelSizeId: SMALL_LABEL.id, offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: -DOT_MM } }, logFolder: null }
     })
-    expect(await readLabelSizes(root)).toEqual({ ok: true, sizes: [SMALL_LABEL] })
+    expect(await readLabelSizes(root)).toEqual({ ok: true, sizes: [SMALL_LABEL, TOPUP_TAPE_SIZE] })
   })
 
   it('adds another saved size to the shared list as "W × H mm", reused by the next PC, and loads it with its offsets', async () => {
@@ -109,9 +109,10 @@ describe('upgrading v0.2 settings', () => {
     if (first.status !== 'ok' || second.status !== 'ok' || !sizes.ok) throw new Error('expected settings and sizes')
     expect(sizes.sizes.map((size) => [size.name, size.widthMm, size.heightMm])).toEqual([
       ['Small Label', 34.4, 25],
+      ['24 mm tape × 26 mm', 26, 24],
       ['50 × 30 mm', 50, 30]
     ])
-    const added = sizes.sizes[1].id
+    const added = sizes.sizes[2].id
     expect(first.settings).toEqual({ printerName: 'ZDesigner GX420t', printerResolution: 203, labelSizeId: added, offsets: { [added]: { offsetXmm: 2 * DOT_MM, offsetYmm: -DOT_MM } }, logFolder: null })
     expect(second.settings.labelSizeId).toBe(added)
     // Saved in the new format: loading again changes nothing.

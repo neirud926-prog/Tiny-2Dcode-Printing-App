@@ -36,7 +36,7 @@ import type { AppHost } from './host'
 import { itemLookupFor, stockLotsLookupFor } from './itemLookup'
 import { topupLookupFor } from './topupLookup'
 import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
-import { printCustomLabelRequest, printerProblem, printLabelRequest, printTestLabel, type PrintContext, type PrintServiceDeps } from './printService'
+import { printCustomLabelRequest, printerProblem, printLabelRequest, printTestLabel, printTopupLabelRequest, type PrintContext, type PrintServiceDeps } from './printService'
 import {
   copyTemplateRequest,
   deleteTemplateRequest,
@@ -119,6 +119,13 @@ export function createAppService(host: AppHost): PreloadApi {
         // A damaged templates.dat must not stop the built-in Layouts, which do not depend on it.
         const templates = await listTemplates(dataFolder)
         return printCustomLabelRequest(request, settings, sizes.sizes, templates.ok ? templates.templates : BUILT_IN_TEMPLATES, context, deps)
+      }),
+    printTopupLabel: (request) =>
+      exclusively(async () => {
+        const database = folderReady ? await topup.current() : builtInTopupDatabase()
+        const outcome = await printTopupLabelRequest(request, folderReady ? settings : null, database.index, context, deps)
+        if (outcome.ok) await rememberTopupSymbology(request.symbology)
+        return outcome
       }),
     listLabelSizes: () => (folderReady ? readLabelSizes(dataFolder) : notReady()),
     addLabelSize: async (size) => {
@@ -268,7 +275,9 @@ export function createAppService(host: AppHost): PreloadApi {
     if (!folderReady) return { ok: false, message: 'The data folder is not ready.' }
     const checked = await checkSettings(input)
     if (!checked.ok) return checked
-    const candidate = checked.settings
+    // The Settings form does not send the Topup code type: keep this PC's.
+    const topupSymbology = checked.settings.topupSymbology ?? settings?.topupSymbology
+    const candidate = topupSymbology ? { ...checked.settings, topupSymbology } : checked.settings
     if (candidate.logFolder !== null && !allowedLogFolders.has(candidate.logFolder)) {
       return { ok: false, message: 'Choose the log folder with the Change button.' }
     }
@@ -280,6 +289,16 @@ export function createAppService(host: AppHost): PreloadApi {
       return { ok: true, settings }
     } catch (error) {
       return { ok: false, message: `The settings could not be saved: ${errorText(error)}` }
+    }
+  }
+
+  /** Keeps the code type of the Topup Label just printed in this PC's settings; not kept if they cannot be written. */
+  async function rememberTopupSymbology(symbology: PcSettings['topupSymbology']): Promise<void> {
+    if (settings === null || settings.topupSymbology === symbology) return
+    try {
+      settings = await savePcSettings(dataFolder, pcName, { ...settings, topupSymbology: symbology })
+    } catch {
+      // Only a convenience: the label printed and was logged.
     }
   }
 

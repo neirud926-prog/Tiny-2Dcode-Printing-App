@@ -2,11 +2,12 @@
  * This PC's printer settings: which printer, the Label Size loaded in it, and per Label Size the
  * offsets that line the print up with the label. Stored per PC in `pcs/<PC name>.dat`; validated
  * here so the app service (authoritative) and the settings form (live feedback) apply the same rules.
- * Also the Label Sizes themselves, shared by every PC, with the built-in Small Label.
+ * Also the Label Sizes themselves, shared by every PC, with the built-in Small Label and Topup tape.
  *
  * Pure: no Node, DOM or Electron.
  */
 
+import type { Symbology } from '../core/template'
 import { DEFAULT_PRINTER_RESOLUTION, dotMm, PRINTER_RESOLUTIONS, type PrinterResolution } from './dataMatrix'
 import { DEFAULT_LABEL_SIZE, type LabelSize } from './labelSvg'
 import { isTapeWidthMm, TAPE_WIDTHS_MM, tapeSizeName } from './tapeSize'
@@ -50,6 +51,16 @@ export interface LabelSizeEntry extends LabelSize {
 
 export const SMALL_LABEL: LabelSizeEntry = { id: 'small-label', name: 'Small Label', kind: 'label', ...DEFAULT_LABEL_SIZE }
 
+/** The built-in Tape Size a Topup Label prints on (GLOSSARY Topup Label): 24 mm tape, 26 mm long. */
+export const TOPUP_TAPE_SIZE: LabelSizeEntry = { id: 'topup-tape-24x26', name: tapeSizeName(24, 26), kind: 'tape', widthMm: 26, heightMm: 24 }
+
+/** The built-in Label Sizes, first in the list in this order, never stored, changed or deleted. */
+export const BUILT_IN_LABEL_SIZES: readonly LabelSizeEntry[] = [SMALL_LABEL, TOPUP_TAPE_SIZE]
+
+export function isBuiltInLabelSize(id: string): boolean {
+  return BUILT_IN_LABEL_SIZES.some((size) => size.id === id)
+}
+
 export const LABEL_SIZE_LIMITS_MM = { min: 10, max: 150 } as const
 export const MAX_LABEL_SIZE_NAME_LENGTH = 40
 export const MAX_OFFSET_MM = 10
@@ -72,6 +83,8 @@ export interface PcSettings {
   readonly offsets: Readonly<Record<string, SizeOffsets>>
   /** Where print logs go; null means `logs` in the data folder. */
   readonly logFolder: string | null
+  /** The code type of this PC's last Topup Label (QR when never printed). */
+  readonly topupSymbology?: Symbology
 }
 
 export const DEFAULT_PC_SETTINGS: PcSettings = {
@@ -206,7 +219,10 @@ export function normalisePcSettings(input: unknown): NormalisePcSettingsResult {
   if (logFolder === undefined) errors.push({ field: 'logFolder', message: 'Choose a log folder.' })
 
   if (errors.length > 0 || logFolder === undefined || printerResolution === undefined) return { ok: false, errors }
-  return { ok: true, settings: { printerName, printerResolution, labelSizeId, offsets, logFolder } }
+  const settings: PcSettings = { printerName, printerResolution, labelSizeId, offsets, logFolder }
+  // Not chosen in the Settings form: anything but a code type is left out, not refused.
+  const { topupSymbology } = record
+  return { ok: true, settings: topupSymbology === 'qr' || topupSymbology === 'datamatrix' ? { ...settings, topupSymbology } : settings }
 
   function offsetMm(value: unknown, field: PcSettingsField, name: string): number | null {
     if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_OFFSET_MM) {

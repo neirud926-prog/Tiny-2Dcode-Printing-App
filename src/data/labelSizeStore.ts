@@ -1,10 +1,10 @@
 /**
  * The Label Sizes in the data folder: `labelsizes.dat`, sealed, shared by every PC, holding the sizes
- * staff added. The Small Label is built in: always first, never stored, changed or deleted. Every
+ * staff added. The Small Label and the Topup tape are built in: always first, never stored, changed or deleted. Every
  * change is made holding the lock file `labelsizes.lock` (see `fileLock`), so two PCs never
  * overwrite each other's change. A damaged or changed `labelsizes.dat` is refused, never replaced.
  */
-import { formatLabelSizeMm, normaliseLabelSize, SMALL_LABEL, type LabelSizeEntry } from '../render/printSettings'
+import { BUILT_IN_LABEL_SIZES, formatLabelSizeMm, isBuiltInLabelSize, normaliseLabelSize, SMALL_LABEL, type LabelSizeEntry } from '../render/printSettings'
 import type { LabelSize } from '../render/labelSvg'
 import { errorText } from './atomicWrite'
 import { defaultLockDeps, withFileLock, type LockDeps } from './fileLock'
@@ -35,19 +35,19 @@ export async function isLabelSizeInUse(dataFolder: string, id: string): Promise<
 export type LabelSizesRead = { ok: true; sizes: LabelSizeEntry[] } | { ok: false; message: string }
 export type LabelSizeChange<T> = { ok: true; value: T } | { ok: false; message: string }
 
-/** The Label Sizes: the Small Label first, then those added, in the order added. */
+/** The Label Sizes: the built-in ones first (the Small Label, then the Topup tape), then those added, in the order added. */
 export async function readLabelSizes(dataFolder: string): Promise<LabelSizesRead> {
   const read = await readSealed(labelSizesPath(dataFolder))
   switch (read.status) {
     case 'missing':
-      return { ok: true, sizes: [SMALL_LABEL] }
+      return { ok: true, sizes: [...BUILT_IN_LABEL_SIZES] }
     case 'tampered':
       return { ok: false, message: `The Label Sizes (${LABEL_SIZES_FILE_NAME}) were changed outside the app.` }
     case 'unreadable':
       return { ok: false, message: `The Label Sizes could not be used: ${read.message}` }
     case 'ok': {
       const sizes = asLabelSizes(read.value)
-      return sizes ? { ok: true, sizes: [SMALL_LABEL, ...sizes] } : { ok: false, message: `The Label Sizes (${LABEL_SIZES_FILE_NAME}) are not a valid list.` }
+      return sizes ? { ok: true, sizes: [...BUILT_IN_LABEL_SIZES, ...sizes] } : { ok: false, message: `The Label Sizes (${LABEL_SIZES_FILE_NAME}) are not a valid list.` }
     }
   }
 }
@@ -75,7 +75,8 @@ export function deleteLabelSize(
   isInUse: (id: string) => Promise<boolean>,
   deps: LockDeps = defaultLockDeps
 ): Promise<LabelSizeChange<null>> {
-  if (id === SMALL_LABEL.id) return Promise.resolve({ ok: false, message: 'The Small Label is built in and cannot be deleted.' })
+  const builtIn = BUILT_IN_LABEL_SIZES.find((size) => size.id === id)
+  if (builtIn) return Promise.resolve({ ok: false, message: builtInDeleteMessage(builtIn) })
   return changeLabelSizes(
     dataFolder,
     async (sizes) => {
@@ -86,6 +87,10 @@ export function deleteLabelSize(
     },
     deps
   )
+}
+
+function builtInDeleteMessage(size: LabelSizeEntry): string {
+  return size.id === SMALL_LABEL.id ? 'The Small Label is built in and cannot be deleted.' : `The label size "${size.name}" is built in and cannot be deleted.`
 }
 
 /**
@@ -109,8 +114,8 @@ export function ensureLabelSize(dataFolder: string, size: LabelSize, deps: LockD
 }
 
 /**
- * Applies `change` to the Label Sizes (the Small Label first) under the lock and writes the sizes
- * after the Small Label. `change` refuses, or returns the new list and a value for the caller.
+ * Applies `change` to the Label Sizes (the built-in ones first) under the lock and writes the sizes
+ * after them. `change` refuses, or returns the new list and a value for the caller.
  */
 async function changeLabelSizes<T>(
   dataFolder: string,
@@ -126,7 +131,7 @@ async function changeLabelSizes<T>(
       try {
         await writeSealed(
           labelSizesPath(dataFolder),
-          changed.sizes.filter((size) => size.id !== SMALL_LABEL.id)
+          changed.sizes.filter((size) => !isBuiltInLabelSize(size.id))
         )
       } catch (error) {
         return { ok: false, message: `The Label Sizes could not be saved: ${errorText(error)}` }

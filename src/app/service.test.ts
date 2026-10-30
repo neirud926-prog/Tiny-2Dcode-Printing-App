@@ -11,7 +11,7 @@ import { tempFolder } from '../data/testFolder'
 import { dotMm, DOT_MM } from '../render/dataMatrix'
 import type { CustomLabelRequest } from '../render/customLabel'
 import type { LabelPrintJob } from '../render/printJob'
-import { SMALL_LABEL, type PcSettings } from '../render/printSettings'
+import { SMALL_LABEL, TOPUP_TAPE_SIZE, type PcSettings } from '../render/printSettings'
 import type { PreloadApi } from '../preload/api'
 import type { DriverPaper } from './host'
 import { createAppService } from './service'
@@ -72,7 +72,7 @@ describe('Label Sizes in the app', () => {
     expect(added.every((outcome) => outcome.ok)).toBe(true)
     for (const each of [one, two]) {
       const listed = await each.api.listLabelSizes()
-      expect(listed.ok && listed.sizes.map((size) => size.name).sort()).toEqual(['Bag', 'Shelf', 'Small Label'])
+      expect(listed.ok && listed.sizes.map((size) => size.name).sort()).toEqual(['24 mm tape × 26 mm', 'Bag', 'Shelf', 'Small Label'])
     }
     expect(await two.api.addLabelSize({ name: 'shelf', widthMm: 70, heightMm: 40 })).toEqual({ ok: false, message: 'There is already a label size named "Shelf".' })
   })
@@ -81,7 +81,7 @@ describe('Label Sizes in the app', () => {
     const { api } = await pc(await tempFolder(), 'PHARM-01')
     expect(await api.deleteLabelSize(SMALL_LABEL.id)).toEqual({ ok: false, message: 'The Small Label is built in and cannot be deleted.' })
     expect(await api.addLabelSize({ name: 'Small Label', widthMm: 34.4, heightMm: 25 })).toMatchObject({ ok: false })
-    expect(await api.listLabelSizes()).toEqual({ ok: true, sizes: [SMALL_LABEL] })
+    expect(await api.listLabelSizes()).toEqual({ ok: true, sizes: [SMALL_LABEL, TOPUP_TAPE_SIZE] })
   })
 
   it('refuse to delete the size loaded in this PC, but another PC may', async () => {
@@ -91,7 +91,7 @@ describe('Label Sizes in the app', () => {
     const shelf = await addSize(one.api, 'Shelf', 50, 30)
     expect((await one.api.savePrinterSettings(settingsFor(shelf))).ok).toBe(true)
     expect(await one.api.deleteLabelSize(shelf)).toEqual({ ok: false, message: 'The label size "Shelf" is loaded in this printer. Change the label in Settings first.' })
-    expect(await two.api.deleteLabelSize(shelf)).toEqual({ ok: true, sizes: [SMALL_LABEL] })
+    expect(await two.api.deleteLabelSize(shelf)).toEqual({ ok: true, sizes: [SMALL_LABEL, TOPUP_TAPE_SIZE] })
   })
 })
 
@@ -104,10 +104,11 @@ describe('Tape Sizes in the app', () => {
     const listed = renamed.ok ? renamed.sizes : []
     expect(listed.map(({ id: _id, ...size }) => size)).toEqual([
       { name: 'Small Label', kind: 'label', widthMm: 34.4, heightMm: 25 },
+      { name: '24 mm tape × 26 mm', kind: 'tape', widthMm: 26, heightMm: 24 },
       { name: '24 mm tape × 40 mm', kind: 'tape', widthMm: 40, heightMm: 24 },
       { name: 'Bin tape', kind: 'tape', widthMm: 150, heightMm: 3.5 }
     ])
-    expect(await api.deleteLabelSize(listed[1].id)).toMatchObject({ ok: true, sizes: [SMALL_LABEL, listed[2]] })
+    expect(await api.deleteLabelSize(listed[2].id)).toMatchObject({ ok: true, sizes: [SMALL_LABEL, TOPUP_TAPE_SIZE, listed[3]] })
   })
 
   it('take only the seven tape widths, a length of 10–150 mm and a name of at most 40 characters', async () => {
@@ -126,7 +127,7 @@ describe('Tape Sizes in the app', () => {
     const folder = await tempFolder()
     const { api, jobs } = await pc(folder, 'PHARM-01')
     const added = await api.addLabelSize({ kind: 'tape', name: '', tapeWidthMm: 24, lengthMm: 40 })
-    const tape = added.ok ? added.sizes[1].id : ''
+    const tape = added.ok ? added.sizes[2].id : ''
     const offsets = { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 }, [tape]: { offsetXmm: 0, offsetYmm: -3 * DOT_MM } }
     expect(await api.savePrinterSettings(settingsFor(tape, offsets))).toMatchObject({ ok: true })
     const startup = await (await pc(folder, 'PHARM-01')).api.getStartup()
@@ -144,7 +145,7 @@ describe('Tape Sizes in the app', () => {
   it('print Custom Labels from a Template made for them on the driver\'s paper, while die-cut sizes keep their page size', async () => {
     const { api, jobs } = await pc(await tempFolder(), 'PHARM-01')
     const added = await api.addLabelSize({ kind: 'tape', name: 'Bins', tapeWidthMm: 24, lengthMm: 50 })
-    const tape = added.ok ? added.sizes[1].id : ''
+    const tape = added.ok ? added.sizes[2].id : ''
     // The Shelf bin design moved up to fit 24 mm tape.
     const design = { ...SHELF_BIN, labelSizeId: tape, code: { ...SHELF_BIN.code, yMm: 12 }, texts: SHELF_BIN.texts.map((text) => ({ ...text, yMm: text.yMm - 2 })) }
     const saved = await api.saveTemplate(design)
@@ -167,7 +168,7 @@ describe('Tape Sizes in the app', () => {
     ] as const) {
       const { api, jobs } = await pc(await tempFolder(), 'PHARM-01', { paper })
       const added = await api.addLabelSize({ kind: 'tape', name: 'Bins', tapeWidthMm: 24, lengthMm: 50 })
-      const tape = added.ok ? added.sizes[1].id : ''
+      const tape = added.ok ? added.sizes[2].id : ''
       const design = { ...SHELF_BIN, labelSizeId: tape, code: { ...SHELF_BIN.code, yMm: 12 }, texts: SHELF_BIN.texts.map((text) => ({ ...text, yMm: text.yMm - 2 })) }
       const saved = await api.saveTemplate(design)
       if (!saved.ok) throw new Error(saved.message)
@@ -181,7 +182,7 @@ describe('Tape Sizes in the app', () => {
     const folder = await tempFolder()
     const { api, jobs } = await pc(folder, 'PHARM-01')
     const added = await api.addLabelSize({ kind: 'tape', name: 'Bins', tapeWidthMm: 24, lengthMm: 50 })
-    const tape = added.ok ? added.sizes[1].id : ''
+    const tape = added.ok ? added.sizes[2].id : ''
     const design = { ...SHELF_BIN, labelSizeId: tape, code: { ...SHELF_BIN.code, yMm: 12 }, texts: SHELF_BIN.texts.map((text) => ({ ...text, yMm: text.yMm - 2 })) }
     // 0.5 mm from the tape edge is outside the band (0.71 mm), though 1 mm inside a die-cut label is not asked of tape.
     const high = { ...design, texts: [{ ...design.texts[0], yMm: 0.5 }, design.texts[1]] }
@@ -204,14 +205,14 @@ describe('Tape Sizes in the app', () => {
     expect(jobs).toHaveLength(1)
     expect(jobs[0].options).toMatchObject({ pageSize: null })
     const printLog = (await readdir(join(folder, 'logs'))).find((name) => name.startsWith('print-log-'))!
-    expect(parseCsvLine(linesOf(await readFile(join(folder, 'logs', printLog), 'utf8'))[1]).slice(9)).toEqual(['Custom', 'Shelf bin', 'BIN-4', 'PHARMACY | top'])
+    expect(parseCsvLine(linesOf(await readFile(join(folder, 'logs', printLog), 'utf8'))[1]).slice(9)).toEqual(['Custom', 'Shelf bin', 'BIN-4', 'PHARMACY | top', 'QR'])
   })
 
   it('read stored sizes without a kind as die-cut Labels', async () => {
     const folder = await tempFolder()
     await writeSealed(join(folder, 'labelsizes.dat'), [{ id: 'shelf', name: 'Shelf', widthMm: 50, heightMm: 30 }])
     const { api } = await pc(folder, 'PHARM-01')
-    expect(await api.listLabelSizes()).toEqual({ ok: true, sizes: [SMALL_LABEL, { id: 'shelf', name: 'Shelf', kind: 'label', widthMm: 50, heightMm: 30 }] })
+    expect(await api.listLabelSizes()).toEqual({ ok: true, sizes: [SMALL_LABEL, TOPUP_TAPE_SIZE, { id: 'shelf', name: 'Shelf', kind: 'label', widthMm: 50, heightMm: 30 }] })
   })
 })
 
@@ -425,7 +426,7 @@ describe('Templates in the app', () => {
     if (!saved.ok) throw new Error(saved.message)
     expect(await two.api.deleteLabelSize(shelf)).toEqual({ ok: false, message: 'The label size "Shelf" is used by a Template and cannot be deleted.' })
     await one.api.deleteTemplate(saved.template!.id)
-    expect(await two.api.deleteLabelSize(shelf)).toEqual({ ok: true, sizes: [SMALL_LABEL] })
+    expect(await two.api.deleteLabelSize(shelf)).toEqual({ ok: true, sizes: [SMALL_LABEL, TOPUP_TAPE_SIZE] })
   })
 })
 
@@ -461,8 +462,8 @@ describe('Custom Labels', () => {
     expect(jobs[0].html).toContain('>Bin 4</tspan>')
     const [logName] = await readdir(join(folder, 'logs'))
     const lines = linesOf(await readFile(join(folder, 'logs', logName), 'utf8'))
-    expect(lines[0].endsWith(',Copies,Kind,Template,Code data,Text')).toBe(true)
-    expect(parseCsvLine(lines[1]).slice(1)).toEqual(['chantm', 'PHARM-01', '', '', '', '', '', '2', 'Custom', 'Layout 2', 'Bin #4 (top)', 'Bin 4 |  | top shelf | '])
+    expect(lines[0].endsWith(',Copies,Kind,Template,Code data,Text,Code type')).toBe(true)
+    expect(parseCsvLine(lines[1]).slice(1)).toEqual(['chantm', 'PHARM-01', '', '', '', '', '', '2', 'Custom', 'Layout 2', 'Bin #4 (top)', 'Bin 4 |  | top shelf | ', 'QR'])
   })
 
   it('are rebuilt and checked before printing: what the screen would refuse never prints', async () => {
@@ -491,7 +492,7 @@ describe('Custom Labels', () => {
     expect(jobs[0].html).toContain('>PHARMACY</tspan>')
     expect(jobs[0].html).toContain('>top shelf</tspan>')
     const printLog = (await readdir(join(folder, 'logs'))).find((name) => name.startsWith('print-log-'))!
-    expect(parseCsvLine(linesOf(await readFile(join(folder, 'logs', printLog), 'utf8'))[1]).slice(9)).toEqual(['Custom', 'Shelf bin', 'BIN-4', 'PHARMACY | top shelf'])
+    expect(parseCsvLine(linesOf(await readFile(join(folder, 'logs', printLog), 'utf8'))[1]).slice(9)).toEqual(['Custom', 'Shelf bin', 'BIN-4', 'PHARMACY | top shelf', 'DataMatrix'])
   })
 
   it('are refused when another Label Size is loaded, naming both', async () => {
@@ -684,5 +685,102 @@ describe('the Topup Database', () => {
   it('is not imported when the dialog is cancelled', async () => {
     const { api } = await pc(await tempFolder(), 'PHARM-01')
     expect(await api.importTopupDatabase()).toEqual({ status: 'cancelled' })
+  })
+})
+
+describe('Topup Labels', () => {
+  /** The longest entry in the built-in Topup Database (172 characters of content). */
+  const DIPH32_CONTENT =
+    '<drug S="1"><a>DIPH/TET/PER(ADS)/POLIO(INACT) (BOOSTRIX POLIO) BOOSTER</a><b>ACELLULAR PERTUSSIS</b><c></c><d>VAC</d><e></e><f>DIPH32</f><G></G><H></H><I></I><J></J></drug>'
+
+  async function onTopupTape(options: { paper?: DriverPaper | null } = {}) {
+    const folder = await tempFolder()
+    const app = await pc(folder, 'PHARM-01', options)
+    expect((await app.api.savePrinterSettings(settingsFor(TOPUP_TAPE_SIZE.id, {}, 360))).ok).toBe(true)
+    return { folder, ...app }
+  }
+
+  it('print on the built-in Tape Size 24 mm tape × 26 mm, listed after the Small Label and never deleted', async () => {
+    const { api } = await pc(await tempFolder(), 'PHARM-01')
+    expect(TOPUP_TAPE_SIZE).toMatchObject({ name: '24 mm tape × 26 mm', kind: 'tape', widthMm: 26, heightMm: 24 })
+    expect(await api.listLabelSizes()).toEqual({ ok: true, sizes: [SMALL_LABEL, TOPUP_TAPE_SIZE] })
+    expect(await api.deleteLabelSize(TOPUP_TAPE_SIZE.id)).toEqual({ ok: false, message: 'The label size "24 mm tape × 26 mm" is built in and cannot be deleted.' })
+    expect(await api.addLabelSize({ kind: 'tape', name: '', tapeWidthMm: 24, lengthMm: 26 })).toEqual({
+      ok: false,
+      message: 'There is already a label size named "24 mm tape × 26 mm".'
+    })
+    const tape = await addTape(api, 24, 40)
+    expect(await api.listLabelSizes()).toMatchObject({ ok: true, sizes: [SMALL_LABEL, TOPUP_TAPE_SIZE, { id: tape }] })
+  })
+
+  it('print the Item Code’s Topup Database content as a QR on the driver’s tape, logged as Custom with Template Topup', async () => {
+    const { folder, api, jobs } = await onTopupTape()
+    expect(await api.printTopupLabel({ itemCode: 'diph32', symbology: 'qr', copies: 2 })).toEqual({ ok: true, message: `Printed 2 labels on ${printer}.`, warning: null })
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0].options).toMatchObject({ deviceName: printer, pageSize: null, copies: 2 })
+    expect(jobs[0].html).toContain('html,body{margin:0;padding:0;width:24mm;height:26mm;')
+    expect(jobs[0].html).toContain('width="26mm" height="24mm" viewBox="0 0 26 24"')
+    // QR version 8 (49 × 49) at 4 dots a module at 360 dpi: 49 × 4 × 25.4 / 360 = 13.8289 mm.
+    expect(jobs[0].html).toContain('width="13.8289"')
+    expect(jobs[0].html).toContain('font-weight="bold">DIPH32</tspan>')
+
+    const printLog = (await readdir(join(folder, 'logs'))).find((name) => name.startsWith('print-log-'))!
+    const lines = linesOf(await readFile(join(folder, 'logs', printLog), 'utf8'))
+    expect(lines[0].endsWith(',Copies,Kind,Template,Code data,Text,Code type')).toBe(true)
+    expect(parseCsvLine(lines[1]).slice(1)).toEqual(['chantm', 'PHARM-01', 'DIPH32', '', '', '', '', '2', 'Custom', 'Topup', DIPH32_CONTENT, 'DIPH32', 'QR'])
+  })
+
+  it('print a DataMatrix at its own largest module', async () => {
+    const { api, jobs } = await onTopupTape()
+    expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'datamatrix', copies: 1 })).toMatchObject({ ok: true })
+    // 48 × 48 at 5 dots: 48 × 5 × 25.4 / 360 = 16.9333 mm.
+    expect(jobs[0].html).toContain('width="16.9333"')
+  })
+
+  it('are refused on any other Label Size, naming the built-in one', async () => {
+    const { api, jobs } = await onTopupTape()
+    for (const sizeId of [SMALL_LABEL.id, await addTape(api, 24, 40)]) {
+      expect((await api.savePrinterSettings(settingsFor(sizeId))).ok).toBe(true)
+      expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'qr', copies: 1 })).toEqual({
+        ok: false,
+        message: 'Not printed: Topup Labels print only on the built-in Tape Size "24 mm tape × 26 mm". Change the label in Settings.'
+      })
+    }
+    expect(jobs).toHaveLength(0)
+  })
+
+  it('are refused for an Item Code not in the Topup Database, or a request that is not valid', async () => {
+    const { api, jobs } = await onTopupTape()
+    expect(await api.printTopupLabel({ itemCode: 'fict01', symbology: 'qr', copies: 1 })).toEqual({ ok: false, message: 'Not printed: FICT01 is not in the Topup Database.' })
+    expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'qr', copies: 0 })).toEqual({
+      ok: false,
+      message: 'Not printed: Copies must be a whole number from 1 to 99.'
+    })
+    expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'aztec' } as never)).toEqual({ ok: false, message: 'Not printed: the label request is not valid.' })
+    expect(jobs).toHaveLength(0)
+  })
+
+  it('are refused when the driver is set to another tape (the tape check)', async () => {
+    const { api, jobs } = await onTopupTape({ paper: { widthMm: 36, lengthMm: null } })
+    expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'qr', copies: 1 })).toEqual({
+      ok: false,
+      message: 'Not printed: The printer is set to 36 mm tape; set 24 mm in its Printing preferences.'
+    })
+    expect(jobs).toHaveLength(0)
+  })
+
+  it('remember the last code type printed on this PC only, kept when the printer settings are saved', async () => {
+    const { folder, api } = await onTopupTape()
+    const startup = await api.getStartup()
+    expect(startup.status === 'ready' && startup.settings?.topupSymbology).toBeUndefined()
+    expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'datamatrix', copies: 1 })).toMatchObject({ ok: true })
+
+    const later = await (await pc(folder, 'PHARM-01')).api.getStartup()
+    expect(later.status === 'ready' && later.settings?.topupSymbology).toBe('datamatrix')
+    // The Settings form does not send it; saving keeps it.
+    const saved = await api.savePrinterSettings(settingsFor(TOPUP_TAPE_SIZE.id, {}, 360))
+    expect(saved.ok && saved.settings.topupSymbology).toBe('datamatrix')
+    const other = await (await pc(folder, 'PHARM-02')).api.getStartup()
+    expect(other.status === 'ready' && other.settings).toBeNull()
   })
 })

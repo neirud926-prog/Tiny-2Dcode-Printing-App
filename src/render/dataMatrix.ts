@@ -1,5 +1,5 @@
 /**
- * The 2D symbols, drawn by bwip-js as SVG: a GTIN Label's GS1 DataMatrix and a Custom Label's Plain code. No Electron and no DOM: this runs in
+ * The 2D symbols, drawn by bwip-js as SVG: a GTIN Label's GS1 DataMatrix, a Custom Label's Plain code and a Topup Label's code. No Electron and no DOM: this runs in
  * the renderer and in Node tests alike.
  */
 
@@ -110,12 +110,25 @@ export function plainCodeOptions(symbology: Symbology, text: string): { bcid: st
 }
 
 /** Quiet zone in modules: DataMatrix 1, QR 4. */
-const QUIET_ZONE_MODULES: Record<Symbology, number> = { datamatrix: 1, qr: 4 }
+export const QUIET_ZONE_MODULES: Record<Symbology, number> = { datamatrix: 1, qr: 4 }
 
 /** Draws a Plain code with modules of `size`, whole printer dots at `dpi`. */
 export function renderPlainCode(symbology: Symbology, text: string, size: ModuleSize, dpi: PrinterResolution): PlainCodeSymbol {
   const module = moduleMm(size, dpi)
   return { ...drawSymbol(plainCodeOptions(symbology, text), module), quietZoneMm: QUIET_ZONE_MODULES[symbology] * module }
+}
+
+/**
+ * The bwip-js options for a Topup Label's code: exactly `text`, in the smallest symbol that holds it,
+ * QR at error correction L or a square DataMatrix (bwip-js's default shape).
+ */
+export function topupCodeOptions(symbology: Symbology, text: string): { bcid: string; text: string; eclevel?: string } {
+  return symbology === 'qr' ? { bcid: 'qrcode', text, eclevel: 'L' } : { bcid: 'datamatrix', text }
+}
+
+/** Draws a Topup Label's code with modules of `moduleMm` (whole printer dots, chosen by the caller). */
+export function renderTopupCode(symbology: Symbology, text: string, moduleMm: number): PlainCodeSymbol {
+  return { ...drawSymbol(topupCodeOptions(symbology, text), moduleMm), quietZoneMm: QUIET_ZONE_MODULES[symbology] * moduleMm }
 }
 
 function drawSymbol(options: { bcid: string; text: string }, moduleMm: number): DataMatrixSymbol {

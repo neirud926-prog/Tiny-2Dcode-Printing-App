@@ -14,12 +14,16 @@ import { formatLabelSizeMm, SMALL_LABEL, type LabelSizeEntry, type PcSettings } 
 import { Field } from './LabelScreen'
 import { LabelFrame } from './LabelPreview'
 import { OutcomeMessage } from './OutcomeMessage'
+import { TopupLabelScreen } from './TopupLabelScreen'
 import { newTemplate, TemplateDesigner } from './TemplateDesigner'
 
 const SYMBOLOGIES: readonly { value: Symbology; label: string }[] = [
   { value: 'datamatrix', label: 'DataMatrix' },
   { value: 'qr', label: 'QR' }
 ]
+
+/** The Template picker's value for the built-in Topup layout, which is not a Template. */
+const TOPUP_LAYOUT = 'topup'
 
 /** Text typed per Template line index; kept when switching Templates. */
 type Lines = readonly string[]
@@ -34,7 +38,7 @@ interface CustomLabelScreenProps {
 }
 
 /**
- * The Custom Label tab: a Template, DataMatrix or QR, the code data, the Template's fill-in lines and
+ * The Custom Label tab: a Template (or the built-in Topup layout, `TopupLabelScreen`), DataMatrix or QR, the code data, the Template's fill-in lines and
  * copies on the left; the live preview and the data the code holds on the right. Stays mounted, so
  * what was typed is kept while the app is open.
  */
@@ -43,6 +47,7 @@ export function CustomLabelScreen({ settings }: CustomLabelScreenProps): React.J
   const [sizes, setSizes] = useState<readonly LabelSizeEntry[]>([SMALL_LABEL])
   const [templateId, setTemplateId] = useState(BUILT_IN_TEMPLATES[0].id)
   const [symbology, setSymbology] = useState<Symbology>('datamatrix')
+  const [topupSymbology, setTopupSymbology] = useState<Symbology>(settings.topupSymbology ?? 'qr')
   const [codeValue, setCodeValue] = useState('')
   const [lines, setLines] = useState<Lines>([])
   const [copies, setCopies] = useState('1')
@@ -142,6 +147,40 @@ export function CustomLabelScreen({ settings }: CustomLabelScreenProps): React.J
   const codeErrors = errorsFor('code', codeValue)
   const copiesErrors = errorsFor('copies', copies)
 
+  const templateSelect = (
+    <select
+      id="custom-template"
+      value={templateId === TOPUP_LAYOUT ? TOPUP_LAYOUT : template.id}
+      onChange={(event) => {
+        setTemplateId(event.target.value)
+        changed()
+      }}
+    >
+      {templates.map((entry) => (
+        <option key={entry.id} value={entry.id}>
+          {entry.name}
+        </option>
+      ))}
+      <option value={TOPUP_LAYOUT}>Topup</option>
+    </select>
+  )
+
+  if (templateId === TOPUP_LAYOUT && !designing) {
+    return (
+      <TopupLabelScreen
+        settings={settings}
+        symbology={topupSymbology}
+        onSymbology={setTopupSymbology}
+        templatePicker={
+          <div className="field">
+            <label htmlFor="custom-template">Template</label>
+            {templateSelect}
+          </div>
+        }
+      />
+    )
+  }
+
   if (designing) {
     const designSize = sizes.find((entry) => entry.id === designing.labelSizeId) ?? SMALL_LABEL
     return <TemplateDesigner initial={designing} size={designSize} templates={templates} onSaved={templatesChanged} onCancel={() => setDesigning(null)} />
@@ -154,20 +193,7 @@ export function CustomLabelScreen({ settings }: CustomLabelScreenProps): React.J
 
         <div className="field">
           <label htmlFor="custom-template">Template</label>
-          <select
-            id="custom-template"
-            value={template.id}
-            onChange={(event) => {
-              setTemplateId(event.target.value)
-              changed()
-            }}
-          >
-            {templates.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.name}
-              </option>
-            ))}
-          </select>
+          {templateSelect}
           <div className="field__messages" aria-live="polite">
             <p className="message message--hint">{templateHint(template, size)}</p>
             {sizeProblem && <p className="message message--error">{sizeProblem}</p>}

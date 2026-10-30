@@ -14,12 +14,14 @@ import { buildLabel, selfCheckLabel, type Label, type LabelRequest } from '../co
 import { errorText } from '../data/atomicWrite'
 import { resolveLogFolder } from '../data/pcSettings'
 import type { Template } from '../core/template'
-import { customPrintLogEntryFor, printLogEntryFor, type PrintLogEntry } from '../data/printLog'
+import { lookupTopup, topupContent, type TopupIndex } from '../core/topup'
+import { customPrintLogEntryFor, printLogEntryFor, topupPrintLogEntryFor, type PrintLogEntry } from '../data/printLog'
 import { buildCustomLabel, templateSizeProblem, type CustomLabelRequest } from '../render/customLabel'
-import { buildCustomLabelPrintJob, buildLabelPrintJob, buildTapeTestPrintJob, sampleLabelRequest, type LabelPrintJob } from '../render/printJob'
+import { buildCustomLabelPrintJob, buildLabelPrintJob, buildTapeTestPrintJob, buildTopupLabelPrintJob, sampleLabelRequest, type LabelPrintJob } from '../render/printJob'
 import { GTIN_LABEL_SIZE_REFUSAL, gtinTapeLengthProblem, isGtinLabelSize } from '../render/gtinTapeLabel'
-import { printSettingsFor, type LabelSizeEntry, type PcSettings, type PrintSettings } from '../render/printSettings'
-import type { PrinterChoice, PrintOutcome } from '../preload/api'
+import { printSettingsFor, TOPUP_TAPE_SIZE, type LabelSizeEntry, type PcSettings, type PrintSettings } from '../render/printSettings'
+import { buildTopupLabel, TOPUP_LABEL_SIZE_REFUSAL } from '../render/topupLabel'
+import type { PrinterChoice, PrintOutcome, TopupLabelRequest } from '../preload/api'
 
 import type { DriverPaper, DriverResult } from './host'
 
@@ -124,6 +126,35 @@ export async function printCustomLabelRequest(
   const sent = await send(buildCustomLabelPrintJob(built.label, printSettings), printSettings, deps)
   if (!sent.ok) return refused(sent.message)
   return logged(customPrintLogEntryFor(built.label, { ...context, at }), settings, context, deps, sent.warning)
+}
+
+/**
+ * Prints the Topup Label for `request` on this PC's printer and adds one print log line (Kind
+ * Custom, Template Topup). The loaded Label Size must be the built-in Topup tape; the code content
+ * comes from `topup`, the Topup Database in use, and the label is laid out here at this PC's
+ * Printer resolution.
+ */
+export async function printTopupLabelRequest(
+  request: unknown,
+  settings: PcSettings | null,
+  topup: TopupIndex,
+  context: PrintContext,
+  deps: PrintServiceDeps
+): Promise<PrintOutcome> {
+  if (settings === null) return refused("set up this PC's printer first.")
+  if (settings.labelSizeId !== TOPUP_TAPE_SIZE.id) return refused(TOPUP_LABEL_SIZE_REFUSAL)
+  if (!isTopupLabelRequest(request)) return refused('the label request is not valid.')
+  const entry = lookupTopup(topup, request.itemCode)
+  if (!entry) return refused(`${request.itemCode.slice(0, 32).toUpperCase()} is not in the Topup Database.`)
+
+  const at = deps.now()
+  const built = buildTopupLabel({ itemCode: entry.itemCode, content: topupContent(entry), symbology: request.symbology, copies: request.copies }, settings.printerResolution)
+  if (!built.ok) return refused(built.message)
+
+  const printSettings = printSettingsFor(settings, TOPUP_TAPE_SIZE)
+  const sent = await send(buildTopupLabelPrintJob(built.label, printSettings), printSettings, deps)
+  if (!sent.ok) return refused(sent.message)
+  return logged(topupPrintLogEntryFor(built.label, { ...context, at }), settings, context, deps, sent.warning)
 }
 
 /**
@@ -261,6 +292,12 @@ function isCustomLabelRequest(value: unknown): value is CustomLabelRequest {
     record.texts.every((text) => typeof text === 'string') &&
     typeof record.copies === 'number'
   )
+}
+
+function isTopupLabelRequest(value: unknown): value is TopupLabelRequest {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record.itemCode === 'string' && (record.symbology === 'datamatrix' || record.symbology === 'qr') && typeof record.copies === 'number'
 }
 
 function isLabelRequest(value: unknown): value is LabelRequest {

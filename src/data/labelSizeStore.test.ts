@@ -1,6 +1,6 @@
 import { readdir, writeFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { SMALL_LABEL } from '../render/printSettings'
+import { SMALL_LABEL, TOPUP_TAPE_SIZE } from '../render/printSettings'
 import type { LockDeps } from './fileLock'
 import { addLabelSize, deleteLabelSize, ensureLabelSize, labelSizesPath, readLabelSizes } from './labelSizeStore'
 import { tempFolder } from './testFolder'
@@ -16,18 +16,24 @@ async function names(folder: string): Promise<string[]> {
 }
 
 describe('Label Sizes store', () => {
-  it('has only the Small Label, 34.4 × 25 mm, before any size is added, and stores nothing for it', async () => {
+  it('has only the built-in Small Label, 34.4 × 25 mm, and 24 mm tape × 26 mm before any size is added, and stores nothing for them', async () => {
     const folder = await tempFolder()
-    expect(await readLabelSizes(folder)).toEqual({ ok: true, sizes: [{ id: 'small-label', name: 'Small Label', kind: 'label', widthMm: 34.4, heightMm: 25 }] })
+    expect(await readLabelSizes(folder)).toEqual({
+      ok: true,
+      sizes: [
+        { id: 'small-label', name: 'Small Label', kind: 'label', widthMm: 34.4, heightMm: 25 },
+        { id: 'topup-tape-24x26', name: '24 mm tape × 26 mm', kind: 'tape', widthMm: 26, heightMm: 24 }
+      ]
+    })
     expect(await readdir(folder)).toEqual([])
   })
 
-  it('adds a size after the Small Label, checked and rounded', async () => {
+  it('adds a size after the built-in ones, checked and rounded', async () => {
     const folder = await tempFolder()
     const added = await addLabelSize(folder, { name: '  Shelf 50x30 ', widthMm: 50.004, heightMm: 30 })
     if (!added.ok) throw new Error(added.message)
     expect(added.value).toMatchObject({ name: 'Shelf 50x30', widthMm: 50, heightMm: 30 })
-    expect(await readLabelSizes(folder)).toEqual({ ok: true, sizes: [SMALL_LABEL, added.value] })
+    expect(await readLabelSizes(folder)).toEqual({ ok: true, sizes: [SMALL_LABEL, TOPUP_TAPE_SIZE, added.value] })
     expect(await readdir(folder)).toEqual(['labelsizes.dat'])
   })
 
@@ -35,7 +41,7 @@ describe('Label Sizes store', () => {
     const folder = await tempFolder()
     expect(await addLabelSize(folder, { name: 'Huge', widthMm: 151, heightMm: 30 })).toEqual({ ok: false, message: 'Label width must be from 10 to 150 mm.' })
     expect(await addLabelSize(folder, { name: ' ', widthMm: 50, heightMm: 30 })).toEqual({ ok: false, message: 'Enter a name for the label size.' })
-    expect(await names(folder)).toEqual(['Small Label'])
+    expect(await names(folder)).toEqual(['Small Label', '24 mm tape × 26 mm'])
   })
 
   it('keeps names unique ignoring case, the Small Label included', async () => {
@@ -46,13 +52,14 @@ describe('Label Sizes store', () => {
       ok: false,
       message: 'There is already a label size named "Small Label".'
     })
-    expect(await names(folder)).toEqual(['Small Label', 'Shelf'])
+    expect(await names(folder)).toEqual(['Small Label', '24 mm tape × 26 mm', 'Shelf'])
   })
 
-  it('never deletes the Small Label', async () => {
+  it('never deletes the built-in sizes', async () => {
     const folder = await tempFolder()
     expect(await deleteLabelSize(folder, SMALL_LABEL.id, notInUse)).toEqual({ ok: false, message: 'The Small Label is built in and cannot be deleted.' })
-    expect(await names(folder)).toEqual(['Small Label'])
+    expect(await deleteLabelSize(folder, TOPUP_TAPE_SIZE.id, notInUse)).toEqual({ ok: false, message: 'The label size "24 mm tape × 26 mm" is built in and cannot be deleted.' })
+    expect(await names(folder)).toEqual(['Small Label', '24 mm tape × 26 mm'])
   })
 
   it('deletes an added size unless it is in use', async () => {
@@ -64,7 +71,7 @@ describe('Label Sizes store', () => {
       message: 'The label size "Shelf" is used by a Template and cannot be deleted.'
     })
     expect(await deleteLabelSize(folder, added.value.id, notInUse)).toEqual({ ok: true, value: null })
-    expect(await names(folder)).toEqual(['Small Label'])
+    expect(await names(folder)).toEqual(['Small Label', '24 mm tape × 26 mm'])
     expect(await deleteLabelSize(folder, added.value.id, notInUse)).toEqual({ ok: false, message: expect.stringContaining('no longer there') })
   })
 
@@ -72,7 +79,7 @@ describe('Label Sizes store', () => {
     const folder = await tempFolder()
     const results = await Promise.all(Array.from({ length: 6 }, (_, index) => addLabelSize(folder, { name: `Size ${index}`, widthMm: 40 + index, heightMm: 30 }, realDeps)))
     expect(results.every((result) => result.ok)).toBe(true)
-    expect((await names(folder)).sort()).toEqual(['Size 0', 'Size 1', 'Size 2', 'Size 3', 'Size 4', 'Size 5', 'Small Label'])
+    expect((await names(folder)).sort()).toEqual(['Size 0', 'Size 1', 'Size 2', 'Size 3', 'Size 4', 'Size 5', 'Small Label', '24 mm tape × 26 mm'].sort())
   })
 
   it('ensures a size by its dimensions: the Small Label, an existing one, or a new "W × H mm"', async () => {
@@ -81,7 +88,7 @@ describe('Label Sizes store', () => {
     const added = await ensureLabelSize(folder, { widthMm: 50, heightMm: 30.5 })
     expect(added).toEqual({ ok: true, value: expect.objectContaining({ name: '50 × 30.5 mm', widthMm: 50, heightMm: 30.5 }) })
     expect(await ensureLabelSize(folder, { widthMm: 50, heightMm: 30.5 })).toEqual(added)
-    expect(await names(folder)).toEqual(['Small Label', '50 × 30.5 mm'])
+    expect(await names(folder)).toEqual(['Small Label', '24 mm tape × 26 mm', '50 × 30.5 mm'])
   })
 
   it('refuses to change a list that was changed outside the app', async () => {

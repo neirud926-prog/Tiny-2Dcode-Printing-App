@@ -11,6 +11,7 @@ import { renderCustomLabelSvg, type CustomLabel } from './customLabel'
 import { renderGtinLabelSvg } from './gtinTapeLabel'
 import type { LabelSizeEntry, PrintSettings } from './printSettings'
 import { renderTapeTestSvg } from './tapeSize'
+import { renderTopupLabelSvg, type TopupLabel } from './topupLabel'
 
 /** The subset of Electron's `WebContentsPrintOptions` a label print uses. */
 export interface LabelPrintOptions {
@@ -45,6 +46,11 @@ export function buildLabelPrintJob(label: Label, settings: PrintSettings): Label
 /** The print job for a Custom Label (its copies) on this PC's printer, with the offsets for its size. */
 export function buildCustomLabelPrintJob(label: CustomLabel, settings: PrintSettings): LabelPrintJob {
   return printJobFor(renderCustomLabelSvg(label), label.copies, settings)
+}
+
+/** The print job for a Topup Label (its copies) on this PC's printer, on the built-in Topup tape. */
+export function buildTopupLabelPrintJob(label: TopupLabel, settings: PrintSettings): LabelPrintJob {
+  return printJobFor(renderTopupLabelSvg(label), label.copies, settings)
 }
 
 /** The Test print on a Tape Size: its outline, printable band edges and name, one copy. */

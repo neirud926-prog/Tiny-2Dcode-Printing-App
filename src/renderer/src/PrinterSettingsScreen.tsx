@@ -4,6 +4,7 @@ import { dotMm, PRINTER_RESOLUTIONS, type PrinterResolution } from '../../render
 import {
   DEFAULT_PC_SETTINGS,
   formatLabelSizeMm,
+  isBuiltInLabelSize,
   MAX_OFFSET_MM,
   normaliseLabelSize,
   normalisePcSettings,
@@ -441,7 +442,7 @@ function LabelSizesPanel({
   return (
     <section className="panel settings" aria-label="Label Sizes">
       <h2>Label Sizes</h2>
-      <p className="settings__intro">Die-cut Label Sizes and Tape Sizes, shared by every PC. The Small Label is built in.</p>
+      <p className="settings__intro">Die-cut Label Sizes and Tape Sizes, shared by every PC. The Small Label and 24 mm tape × 26 mm (for Topup Labels) are built in.</p>
       {message && <p className="message message--error">{message}</p>}
       <ul className="label-sizes">
         {sizes.map((size) => (
@@ -449,7 +450,7 @@ function LabelSizesPanel({
             <span>
               <strong>{size.name}</strong> <span className="field__note">{formatLabelSizeMm(size)}</span>
             </span>
-            {size.id === SMALL_LABEL.id ? (
+            {isBuiltInLabelSize(size.id) ? (
               <span className="field__note">built in</span>
             ) : (
               <button type="button" className="button button--secondary button--small" disabled={busy} onClick={() => void run(() => window.api.deleteLabelSize(size.id))}>

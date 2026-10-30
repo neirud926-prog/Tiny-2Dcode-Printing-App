@@ -37,7 +37,8 @@ describe('print log line', () => {
       'Kind',
       'Template',
       'Code data',
-      'Text'
+      'Text',
+      'Code type'
     ])
     expect(entry).toEqual({
       at,
@@ -52,16 +53,17 @@ describe('print log line', () => {
       kind: 'GTIN',
       template: '',
       codeData: '',
-      text: ''
+      text: '',
+      codeType: ''
     })
-    expect(printLogLine(entry)).toBe('2026-10-19 14:03:07,chantm,PHARM-01,PARA18,60,20425873440489,2027-12-31,2512172-1,3,GTIN,,,\r\n')
+    expect(printLogLine(entry)).toBe('2026-10-19 14:03:07,chantm,PHARM-01,PARA18,60,20425873440489,2027-12-31,2512172-1,3,GTIN,,,,\r\n')
   })
 
-  it('records a Custom Label with Kind Custom, its Template, code data and text lines joined by " | ", and no GTIN fields', () => {
+  it('records a Custom Label with Kind Custom, its Template, code data, text lines joined by " | " and code type, and no GTIN fields', () => {
     const custom = buildCustomLabel(LAYOUT_2, SMALL_LABEL, { symbology: 'qr', codeValue: 'Bin #4 (top)', texts: ['Bin 4', '', 'a+b', 'end'], copies: 2 }, 203)
     if (!custom.ok) throw new Error(JSON.stringify(custom.errors))
     const line = printLogLine(customPrintLogEntryFor(custom.label, { at, windowsUser: 'chantm', pcName: 'PHARM-01' }))
-    expect(line).toBe('2026-10-19 14:03:07,chantm,PHARM-01,,,,,,2,Custom,Layout 2,Bin #4 (top),Bin 4 |  | a+b | end\r\n')
+    expect(line).toBe('2026-10-19 14:03:07,chantm,PHARM-01,,,,,,2,Custom,Layout 2,Bin #4 (top),Bin 4 |  | a+b | end,QR\r\n')
   })
 
   it('leaves Pack Volume blank when none is encoded', () => {
@@ -72,7 +74,7 @@ describe('print log line', () => {
   it('keeps Item Codes with spaces or &, and Lots with / ( ), intact', () => {
     const label = labelFor({ itemCode: 'A&B 01', packVolumeDigit: 0, lot: '(B)A5/29-1' })
     const fields = parseCsvLine(printLogLine(printLogEntryFor(label, { at, windowsUser: 'o"brien, k', pcName: 'PHARM-01' })).trimEnd())
-    expect(fields).toEqual(['2026-10-19 14:03:07', 'o"brien, k', 'PHARM-01', 'A&B 01', '', label.internalGtin, '2027-12-31', '(B)A5/29-1', '3', 'GTIN', '', '', ''])
+    expect(fields).toEqual(['2026-10-19 14:03:07', 'o"brien, k', 'PHARM-01', 'A&B 01', '', label.internalGtin, '2027-12-31', '(B)A5/29-1', '3', 'GTIN', '', '', '', ''])
   })
 
   it('names the file by month and PC', () => {

@@ -7,7 +7,7 @@ import type { ItemListEntry, ItemListImportResult, ItemListInfo } from '../core/
 import type { LabelRequest } from '../core/label'
 import type { PendingLabelInput, PendingLabelView } from '../core/pendingLabel'
 import type { StockLot, StockOnhandImportResult, StockOnhandInfo } from '../core/stockOnhand'
-import type { Template } from '../core/template'
+import type { Symbology, Template } from '../core/template'
 import type { TopupDatabaseInfo, TopupEntry, TopupImportResult } from '../core/topup'
 import type { CustomLabelRequest } from '../render/customLabel'
 import type { LabelSizeEntry, PcSettings } from '../render/printSettings'
@@ -89,6 +89,13 @@ export type TopupLookup =
       readonly topupDatabase: TopupDatabaseInfo
     }
 
+/** What the Topup layout sends to print: the label is rebuilt from the Topup Database in use. */
+export interface TopupLabelRequest {
+  readonly itemCode: string
+  readonly symbology: Symbology
+  readonly copies: number
+}
+
 /** An item's Lots in the Stock Onhand in use. */
 export interface StockLotsLookup {
   /** The Stock Onhand in use, whatever its Report Date; null when none is imported. */
@@ -119,7 +126,7 @@ export type DeleteExpiredOutcome = { readonly ok: true; readonly deleted: number
 
 export type SaveSettingsOutcome = { readonly ok: true; readonly settings: PcSettings } | { readonly ok: false; readonly message: string }
 
-/** The Label Sizes, shared by every PC: the Small Label first, then those added. */
+/** The Label Sizes, shared by every PC: the built-in Small Label and Topup tape first, then those added. */
 export type LabelSizesList = { readonly ok: true; readonly sizes: readonly LabelSizeEntry[] } | { readonly ok: false; readonly message: string }
 
 /** The Templates: the built-in Layouts 1 and 2, then those staff saved, shared by every PC. */
@@ -214,10 +221,17 @@ export interface PreloadApi {
    * offsets, then adds a print log line (Kind Custom).
    */
   printCustomLabel(request: CustomLabelRequest): Promise<PrintOutcome>
+  /**
+   * Looks the Item Code up in the Topup Database in use, builds its Topup Label at the largest module
+   * that fits, refuses it unless the built-in "24 mm tape × 26 mm" is the Label Size loaded, prints it
+   * after the driver tape check, then adds a print log line (Kind Custom, Template Topup) and
+   * remembers the code type for this PC.
+   */
+  printTopupLabel(request: TopupLabelRequest): Promise<PrintOutcome>
   /** The Label Sizes (picking up sizes another PC added). */
   listLabelSizes(): Promise<LabelSizesList>
   /** Adds a Label Size to the shared list (name unique ignoring case); the list after. */
   addLabelSize(size: NewLabelSize): Promise<LabelSizesList>
-  /** Deletes an added Label Size, unless it is the Small Label, used by a Template or loaded in this PC's printer; the list after. */
+  /** Deletes an added Label Size, unless it is built in, used by a Template or loaded in this PC's printer; the list after. */
   deleteLabelSize(id: string): Promise<LabelSizesList>
 }

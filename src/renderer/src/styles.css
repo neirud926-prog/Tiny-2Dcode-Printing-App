@@ -282,6 +282,25 @@ p {
   color: var(--text);
 }
 
+/* The Topup Label's drug, as found in the Topup Database. */
+.topup-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+
+.topup-details dt {
+  color: var(--muted);
+}
+
+.topup-details dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 [hidden] {
   display: none !important;
 }
