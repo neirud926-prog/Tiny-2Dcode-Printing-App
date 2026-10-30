@@ -88,7 +88,7 @@ export function CustomLabelScreen({ settings }: CustomLabelScreenProps): React.J
     () => ({ templateId: template.id, symbology, codeValue, texts: fillLines.map(({ index }) => lines[index] ?? ''), copies: parseCopies(copies) }),
     [template, symbology, codeValue, lines, copies] // fillLines follows the template
   )
-  const result = useMemo<BuildCustomLabelResult>(() => buildCustomLabel(template, size, request), [template, size, request])
+  const result = useMemo<BuildCustomLabelResult>(() => buildCustomLabel(template, size, request, settings.printerResolution), [template, size, request, settings.printerResolution])
   const sizeProblem = templateSizeProblem(template, settings.labelSizeId, sizes)
   const svg = useMemo(() => (result.ok ? renderCustomLabelSvg(result.label) : null), [result])
 

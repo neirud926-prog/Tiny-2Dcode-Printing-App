@@ -35,7 +35,7 @@ const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'"
 
 /** The print job for `label` (its copies) on this PC's printer and label roll. */
 export function buildLabelPrintJob(label: Label, settings: PrintSettings): LabelPrintJob {
-  return printJobFor(renderLabelSvg(label, settings.labelSize), label.copies, settings)
+  return printJobFor(renderLabelSvg(label, settings.labelSize, settings.printerResolution), label.copies, settings)
 }
 
 /** The print job for a Custom Label (its copies) on this PC's printer, with the offsets for its size. */

@@ -108,7 +108,7 @@ export async function printCustomLabelRequest(
   if (!size) return refused('the label size in this printer is no longer in the list. Change the label in Settings.')
 
   const at = deps.now()
-  const built = buildCustomLabel(template, size, request)
+  const built = buildCustomLabel(template, size, request, settings.printerResolution)
   if (!built.ok) return refused(built.errors.map((error) => error.message).join(' '))
 
   const sent = await send(buildCustomLabelPrintJob(built.label, printSettingsFor(settings, size)), deps)

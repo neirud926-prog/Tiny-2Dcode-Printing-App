@@ -10,7 +10,8 @@
 import { isRecord, SMALL_LABEL } from '../render/printSettings'
 
 export type Symbology = 'datamatrix' | 'qr'
-export type DotsPerModule = 3 | 4 | 5
+/** Whole printer dots at the PC's Printer resolution: 203 dpi 3 / 4 / 5, 300 dpi 4 / 6 / 7, 360 dpi 5 / 7 / 9. */
+export type ModuleSize = 'small' | 'medium' | 'large'
 export type TextSizePt = 6.5 | 8 | 10
 /** `fixed`: the value is saved in the Template; `fill`: typed when printing. */
 export type ElementMode = 'fixed' | 'fill'
@@ -21,8 +22,8 @@ export interface TemplateCode {
   readonly yMm: number
   /** The default choice when printing; staff may switch DataMatrix / QR. */
   readonly symbology: Symbology
-  /** One module is this many printer dots. */
-  readonly dotsPerModule: DotsPerModule
+  /** Becomes whole printer dots at the printing PC's resolution. */
+  readonly moduleSize: ModuleSize
   readonly mode: ElementMode
   /** The data of a fixed code. */
   readonly value?: string
@@ -58,7 +59,9 @@ export const MAX_TEXT_LINES = 6
 export const MAX_CODE_LENGTH = 40
 /** A fill-in line's maximum length is at most this. */
 export const MAX_TEXT_LENGTH = 40
-export const DOTS_PER_MODULE_CHOICES: readonly DotsPerModule[] = [3, 4, 5]
+export const MODULE_SIZE_CHOICES: readonly ModuleSize[] = ['small', 'medium', 'large']
+/** What Templates saved before v0.4 stored instead: dots per module at 203 dpi. */
+const MODULE_SIZE_OF_DOTS: Readonly<Record<number, ModuleSize>> = { 3: 'small', 4: 'medium', 5: 'large' }
 export const TEXT_SIZE_CHOICES: readonly TextSizePt[] = [6.5, 8, 10]
 /** The designer moves elements in steps of this, and snaps them to it. */
 export const DESIGN_GRID_MM = 0.5
@@ -73,7 +76,7 @@ function fillLine(id: string, xMm: number, yMm: number, widthMm: number, align: 
 
 /**
  * Layout 1 on the Small Label (34.4 × 25 mm): the code centred, one 8 pt line under it, up to 20
- * characters. The largest symbol (QR version 3 at 3 dots, 10.9 mm, with a 1.5 mm quiet zone)
+ * characters. The largest symbol (QR version 3, Small at 203 dpi: 3 dots, 10.9 mm, with a 1.5 mm quiet zone)
  * ends at 15.9 mm, its quiet zone at 17.4 mm; the line's box is 17.5–20.1 mm.
  */
 export const LAYOUT_1: Template = {
@@ -81,7 +84,7 @@ export const LAYOUT_1: Template = {
   name: 'Layout 1',
   labelSizeId: SMALL_LABEL.id,
   builtIn: true,
-  code: { xMm: 17.2, yMm: 10.5, symbology: 'datamatrix', dotsPerModule: 3, mode: 'fill' },
+  code: { xMm: 17.2, yMm: 10.5, symbology: 'datamatrix', moduleSize: 'small', mode: 'fill' },
   texts: [fillLine('line-1', 1, 17.5, 32.4, 'center', 8, 20)]
 }
 
@@ -95,7 +98,7 @@ export const LAYOUT_2: Template = {
   name: 'Layout 2',
   labelSizeId: SMALL_LABEL.id,
   builtIn: true,
-  code: { xMm: 7, yMm: 12.5, symbology: 'datamatrix', dotsPerModule: 3, mode: 'fill' },
+  code: { xMm: 7, yMm: 12.5, symbology: 'datamatrix', moduleSize: 'small', mode: 'fill' },
   texts: [7, 10, 13, 16].map((yMm, i) => fillLine(`line-${i + 1}`, 14, yMm, 19.4, 'left', 6.5, 16))
 }
 
@@ -114,13 +117,17 @@ export function normaliseTemplateName(value: unknown): { ok: true; name: string 
 /**
  * A Template read from untrusted input (the renderer, or `templates.dat`): its fields copied, typed
  * and nothing else, never built in; null when it is not shaped like one. Whether its layout and
- * values are allowed is `templateProblems`'s to say.
+ * values are allowed is `templateProblems`'s to say. A code saved with dots per module (before
+ * v0.4) reads as its module size: 3 Small, 4 Medium, 5 Large; any other number reads as an unknown size,
+ * for `templateProblems` to refuse.
  */
 export function parseTemplate(value: unknown): Template | null {
   if (!isRecord(value) || !isRecord(value.code) || !Array.isArray(value.texts)) return null
   const { code } = value
   if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.labelSizeId !== 'string') return null
-  if (!isNumber(code.xMm) || !isNumber(code.yMm) || !isNumber(code.dotsPerModule) || !isMode(code.mode)) return null
+  if (!isNumber(code.xMm) || !isNumber(code.yMm) || !isMode(code.mode)) return null
+  const moduleSize = typeof code.moduleSize === 'string' ? code.moduleSize : isNumber(code.dotsPerModule) ? (MODULE_SIZE_OF_DOTS[code.dotsPerModule] ?? `${code.dotsPerModule} dots`) : undefined
+  if (moduleSize === undefined) return null
   if (code.symbology !== 'datamatrix' && code.symbology !== 'qr') return null
   if (code.value !== undefined && typeof code.value !== 'string') return null
   const texts: TemplateText[] = []
@@ -151,7 +158,7 @@ export function parseTemplate(value: unknown): Template | null {
       xMm: code.xMm,
       yMm: code.yMm,
       symbology: code.symbology,
-      dotsPerModule: code.dotsPerModule as DotsPerModule,
+      moduleSize: moduleSize as ModuleSize,
       mode: code.mode,
       ...(code.value === undefined ? {} : { value: code.value })
     },

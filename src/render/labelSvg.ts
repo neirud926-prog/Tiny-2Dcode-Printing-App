@@ -11,7 +11,7 @@
  */
 
 import type { Label } from '../core/label'
-import { DOT_MM, renderDataMatrix, type DataMatrixSymbol } from './dataMatrix'
+import { DEFAULT_PRINTER_RESOLUTION, dotMm, renderDataMatrix, type DataMatrixSymbol, type PrinterResolution } from './dataMatrix'
 import { MM_PER_PT, textWidthMm } from './textMetrics'
 
 export interface LabelSize {
@@ -76,9 +76,9 @@ export interface LabelLayout {
   readonly content: { readonly topMm: number; readonly bottomMm: number }
 }
 
-/** Positions the symbol and text of a label on a label of the given size. */
-export function layoutLabel(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE): LabelLayout {
-  const dataMatrix = renderDataMatrix(label)
+/** Positions the symbol and text of a label on a label of the given size, for a printer of `dpi`. */
+export function layoutLabel(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE, dpi: PrinterResolution = DEFAULT_PRINTER_RESOLUTION): LabelLayout {
+  const dataMatrix = renderDataMatrix(label, dpi)
   const lotOnOwnLine = label.lot.length > LOT_OWN_LINE_AFTER
 
   const itemCodeRuns: TextRun[] = [run(label.itemCode, ITEM_CODE_PT, true)]
@@ -96,10 +96,10 @@ export function layoutLabel(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE):
   const ownLineHeight = lotOnOwnLine ? OWN_LINE_GAP_MM + capHeightMm(DETAIL_PT) + descentMm(DETAIL_PT) : 0
   const contentHeight = rowHeight + ownLineHeight
 
-  // The symbol sits on whole printer dots, so its modules print exactly 4 dots each.
-  const contentTop = snapToDot((size.heightMm - contentHeight) / 2)
-  const symbolX = snapToDot(SIDE_PADDING_MM)
-  const symbolY = contentTop + floorToDot((rowHeight - dataMatrix.heightMm) / 2)
+  // The symbol sits on whole printer dots, so its modules print exactly the same dots each.
+  const contentTop = snapToDot((size.heightMm - contentHeight) / 2, dpi)
+  const symbolX = snapToDot(SIDE_PADDING_MM, dpi)
+  const symbolY = contentTop + floorToDot((rowHeight - dataMatrix.heightMm) / 2, dpi)
   const blockTop = contentTop + (rowHeight - blockHeight) / 2
 
   const textX = symbolX + dataMatrix.widthMm + SYMBOL_TEXT_GAP_MM
@@ -119,9 +119,9 @@ export function layoutLabel(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE):
   }
 }
 
-/** The label as a self-contained SVG document, `widthMm` × `heightMm` in size. */
-export function renderLabelSvg(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE): string {
-  const layout = layoutLabel(label, size)
+/** The label as a self-contained SVG document, `widthMm` × `heightMm` in size, for a printer of `dpi`. */
+export function renderLabelSvg(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE, dpi: PrinterResolution = DEFAULT_PRINTER_RESOLUTION): string {
+  const layout = layoutLabel(label, size, dpi)
   return labelSvgDocument(size, layout.symbol, [layout.itemCodeLine, layout.expiryLine, layout.lotLine])
 }
 
@@ -187,12 +187,13 @@ function descentMm(fontSizePt: number): number {
   return fontSizePt * MM_PER_PT * DESCENT_EM
 }
 
-export function snapToDot(mmValue: number): number {
-  return Math.round(mmValue / DOT_MM) * DOT_MM
+/** A position rounded to whole printer dots at `dpi`. */
+export function snapToDot(mmValue: number, dpi: PrinterResolution): number {
+  return Math.round(mmValue / dotMm(dpi)) * dotMm(dpi)
 }
 
-function floorToDot(mmValue: number): number {
-  return Math.floor(mmValue / DOT_MM + 1e-9) * DOT_MM
+function floorToDot(mmValue: number, dpi: PrinterResolution): number {
+  return Math.floor(mmValue / dotMm(dpi) + 1e-9) * dotMm(dpi)
 }
 
 function mm(value: number): string {

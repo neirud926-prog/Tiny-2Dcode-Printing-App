@@ -40,9 +40,9 @@ describe('Templates store', () => {
     expect(created.id).not.toBe('')
     expect(created).toMatchObject({ name: 'Shelf bin', builtIn: false, labelSizeId: 'shelf' })
     expect(await readdir(folder)).toEqual(['templates.dat'])
-    const updated = await saved(folder, { ...created, code: { ...created.code, dotsPerModule: 4 } })
+    const updated = await saved(folder, { ...created, code: { ...created.code, moduleSize: 'medium' } })
     expect(await stored(folder)).toEqual([updated])
-    expect(updated.code.dotsPerModule).toBe(4)
+    expect(updated.code.moduleSize).toBe('medium')
     expect(await saveTemplate(folder, { ...created, id: 'gone' }, anyLayout)).toEqual({ ok: false, message: expect.stringContaining('no longer there') })
   })
 

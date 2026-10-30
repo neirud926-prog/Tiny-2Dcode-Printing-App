@@ -4,6 +4,9 @@ import { describe, expect, it } from 'vitest'
 import type { LabelRequest } from '../core/label'
 import { LAYOUT_1, LAYOUT_2, type Template } from '../core/template'
 import { linesOf, parseCsvLine } from '../data/csvTesting'
+import { pcSettingsPath } from '../data/pcSettings'
+import { writeSealed } from '../data/sealed'
+import { templatesPath } from '../data/templateStore'
 import { tempFolder } from '../data/testFolder'
 import { DOT_MM } from '../render/dataMatrix'
 import type { CustomLabelRequest } from '../render/customLabel'
@@ -33,8 +36,8 @@ async function pc(dataFolder: string, pcName: string): Promise<{ api: PreloadApi
   return { api, jobs }
 }
 
-function settingsFor(labelSizeId: string, offsets: PcSettings['offsets'] = {}): PcSettings {
-  return { printerName: printer, labelSizeId, offsets, logFolder: null }
+function settingsFor(labelSizeId: string, offsets: PcSettings['offsets'] = {}, printerResolution: PcSettings['printerResolution'] = 203): PcSettings {
+  return { printerName: printer, printerResolution, labelSizeId, offsets, logFolder: null }
 }
 
 async function addSize(api: PreloadApi, name: string, widthMm: number, heightMm: number): Promise<string> {
@@ -127,7 +130,7 @@ const SHELF_BIN: Template = {
   name: 'Shelf bin',
   labelSizeId: 'shelf',
   builtIn: false,
-  code: { xMm: 10, yMm: 15, symbology: 'datamatrix', dotsPerModule: 4, mode: 'fill' },
+  code: { xMm: 10, yMm: 15, symbology: 'datamatrix', moduleSize: 'medium', mode: 'fill' },
   texts: [
     { id: 'line-1', xMm: 20, yMm: 10, widthMm: 28, align: 'left', fontSizePt: 10, bold: true, mode: 'fixed', value: 'PHARMACY' },
     { id: 'line-2', xMm: 20, yMm: 16, widthMm: 28, align: 'left', fontSizePt: 8, bold: false, mode: 'fill' }
@@ -281,5 +284,77 @@ describe('Custom Labels', () => {
       message: 'Not printed: This template was made for Small Label (34.4 × 25 mm); this PC prints Shelf (50 × 30 mm). Change the label in Settings.'
     })
     expect(jobs).toHaveLength(0)
+  })
+})
+
+describe('Printer resolution', () => {
+  /** The width the symbol is drawn at in a printed page, e.g. `width="10.0099"`. */
+  const symbolWidth = (mm: number) => `width="${mm.toFixed(4)}"`
+
+  it('reads as 203 dpi from settings saved before it existed', async () => {
+    const folder = await tempFolder()
+    await writeSealed(pcSettingsPath(folder, 'PHARM-01'), { printerName: printer, labelSizeId: SMALL_LABEL.id, offsets: {}, logFolder: null })
+    const startup = await (await pc(folder, 'PHARM-01')).api.getStartup()
+    expect(startup.status === 'ready' && startup.settings).toEqual(settingsFor(SMALL_LABEL.id))
+  })
+
+  it('is kept per PC, with the offsets snapped to whole dots at it', async () => {
+    const folder = await tempFolder()
+    const { api } = await pc(folder, 'PHARM-01')
+    const saved = await api.savePrinterSettings(settingsFor(SMALL_LABEL.id, { [SMALL_LABEL.id]: { offsetXmm: 0.3, offsetYmm: -0.2 } }, 360))
+    // 0.3 mm is 4.25 dots at 360 dpi, -0.2 mm is -2.83: 4 and -3 dots of 25.4 / 360 mm.
+    expect(saved.ok && saved.settings.offsets[SMALL_LABEL.id].offsetXmm).toBeCloseTo((4 * 25.4) / 360, 12)
+    expect(saved.ok && saved.settings.offsets[SMALL_LABEL.id].offsetYmm).toBeCloseTo((-3 * 25.4) / 360, 12)
+    const startup = await (await pc(folder, 'PHARM-01')).api.getStartup()
+    expect(startup.status === 'ready' && startup.settings?.printerResolution).toBe(360)
+    expect(await api.savePrinterSettings({ ...settingsFor(SMALL_LABEL.id), printerResolution: 600 as never })).toMatchObject({ ok: false })
+  })
+
+  it('sizes a GTIN Label’s modules: 4 dots at 203 dpi as before, 7 dots at 360 dpi', async () => {
+    const { api, jobs } = await pc(await tempFolder(), 'PHARM-01')
+    expect((await api.savePrinterSettings(settingsFor(SMALL_LABEL.id))).ok).toBe(true)
+    expect(await api.testPrint(settingsFor(SMALL_LABEL.id))).toMatchObject({ ok: true })
+    expect(await api.testPrint(settingsFor(SMALL_LABEL.id, {}, 360))).toMatchObject({ ok: true })
+    // The 20 × 20 symbol: 20 × 4 × 25.4 / 203 = 10.0099 mm; 20 × 7 × 25.4 / 360 = 9.8778 mm.
+    expect(jobs[0].html).toContain(symbolWidth(10.0099))
+    expect(jobs[1].html).toContain(symbolWidth(9.8778))
+  })
+
+  it('sizes a Custom Label’s modules at this PC’s resolution', async () => {
+    const custom: CustomLabelRequest = { templateId: LAYOUT_2.id, symbology: 'datamatrix', codeValue: 'BIN-4', texts: ['', '', '', ''], copies: 1 }
+    for (const [dpi, mm] of [
+      [203, 9.7596], // Small: 3 dots, 26 × 3 × 25.4 / 203
+      [300, 8.8053], // 4 dots, 26 × 4 × 25.4 / 300
+      [360, 9.1722] // 5 dots, 26 × 5 × 25.4 / 360
+    ] as const) {
+      const { api, jobs } = await pc(await tempFolder(), 'PHARM-01')
+      expect((await api.savePrinterSettings(settingsFor(SMALL_LABEL.id, {}, dpi))).ok).toBe(true)
+      expect(await api.printCustomLabel(custom)).toMatchObject({ ok: true })
+      expect(jobs[0].html).toContain(symbolWidth(mm))
+    }
+  })
+
+  it('reads Templates saved with dots per module as Small, Medium or Large', async () => {
+    const folder = await tempFolder()
+    const { api } = await pc(folder, 'PHARM-01')
+    const shelf = await addSize(api, 'Shelf', 50, 30)
+    const stored = [3, 4, 5].map((dots) => {
+      const { moduleSize: _, ...code } = SHELF_BIN.code
+      return { ...SHELF_BIN, id: `t${dots}`, name: `Bin ${dots}`, labelSizeId: shelf, code: { ...code, dotsPerModule: dots } }
+    })
+    await writeSealed(templatesPath(folder), stored)
+    const listed = await api.listTemplates()
+    expect(listed.ok && listed.templates.slice(2).map((template) => template.code.moduleSize)).toEqual(['small', 'medium', 'large'])
+    expect(listed.ok && listed.templates.slice(0, 2)).toEqual([LAYOUT_1, LAYOUT_2])
+    expect(LAYOUT_1.code.moduleSize).toBe('small')
+  })
+
+  it('refuses a Template whose code fits at one resolution but not at another', async () => {
+    const { api } = await pc(await tempFolder(), 'PHARM-01')
+    // A Large QR code is 18.14 mm at 203 dpi (5 dots) but 18.42 mm at 360 dpi (9 dots), plus its quiet zone.
+    const strip = await addSize(api, 'Strip', 40, 23.7)
+    const design: Template = { ...SHELF_BIN, labelSizeId: strip, code: { ...SHELF_BIN.code, xMm: 20, yMm: 12, moduleSize: 'large' }, texts: [] }
+    expect(await api.saveTemplate(design)).toEqual({ ok: false, message: 'The code must be at least 1 mm inside the label.' })
+    expect(await api.saveTemplate({ ...design, code: { ...design.code, moduleSize: 'medium' } })).toMatchObject({ ok: true })
   })
 })

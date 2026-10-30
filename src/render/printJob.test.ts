@@ -20,6 +20,7 @@ function labelFor(overrides: Partial<LabelRequest> = {}) {
 
 const settings: PrintSettings = {
   printerName: 'ZDesigner GX420t',
+  printerResolution: 203,
   labelSize: { widthMm: 34.4, heightMm: 25 },
   offsetXmm: 2 * DOT_MM,
   offsetYmm: -3 * DOT_MM
@@ -70,7 +71,7 @@ describe('buildLabelPrintJob', () => {
 
 describe('buildCustomLabelPrintJob', () => {
   it('prints the Custom Label SVG on its size, with the offsets and copies, locked down like a GTIN Label', () => {
-    const built = buildCustomLabel(LAYOUT_1, SMALL_LABEL, { symbology: 'qr', codeValue: 'Bin #4', texts: ['Bin #4'], copies: 7 })
+    const built = buildCustomLabel(LAYOUT_1, SMALL_LABEL, { symbology: 'qr', codeValue: 'Bin #4', texts: ['Bin #4'], copies: 7 }, 203)
     if (!built.ok) throw new Error(JSON.stringify(built.errors))
     const { html, options } = buildCustomLabelPrintJob(built.label, settings)
     expect(options).toMatchObject({ silent: true, deviceName: 'ZDesigner GX420t', pageSize: { width: 34_400, height: 25_000 }, copies: 7 })

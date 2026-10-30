@@ -11,7 +11,7 @@ const DESIGNED: Template = {
   name: 'Shelf bin',
   labelSizeId: SHELF.id,
   builtIn: false,
-  code: { xMm: 10, yMm: 15, symbology: 'datamatrix', dotsPerModule: 4, mode: 'fill' },
+  code: { xMm: 10, yMm: 15, symbology: 'datamatrix', moduleSize: 'medium', mode: 'fill' },
   texts: [
     { id: 'line-1', xMm: 20, yMm: 10, widthMm: 28, align: 'left', fontSizePt: 10, bold: true, mode: 'fixed', value: 'PHARMACY' },
     { id: 'line-2', xMm: 20, yMm: 16, widthMm: 28, align: 'left', fontSizePt: 8, bold: false, mode: 'fill' }
@@ -33,10 +33,18 @@ describe('templateProblems: a Template to save', () => {
 
   it('keeps the code, with its quiet zone, at least 1 mm inside the label, whichever code is printed', () => {
     expect(templateProblems({ ...DESIGNED, code: { ...DESIGNED.code, xMm: 6 } }, SHELF)).toEqual(['The code must be at least 1 mm inside the label.'])
-    // QR at 5 dots is 18.1 mm with 2.5 mm of quiet zone: on a 30 mm label its centre must be 11.6 mm from the top at least.
-    const qr5 = { ...DESIGNED, texts: [], code: { ...DESIGNED.code, dotsPerModule: 5 as const, xMm: 25, yMm: 11 } }
+    // Large QR is 18.4 mm at 360 dpi (9 dots) with 2.5 mm of quiet zone: on a 30 mm label its centre must be 11.8 mm from the top at least.
+    const qr5 = { ...DESIGNED, texts: [], code: { ...DESIGNED.code, moduleSize: 'large' as const, xMm: 25, yMm: 11.5 } }
     expect(templateProblems(qr5, SHELF)).toEqual(['The code must be at least 1 mm inside the label.'])
     expect(templateProblems({ ...qr5, code: { ...qr5.code, yMm: 15 } }, SHELF)).toEqual([])
+  })
+
+  it('checks the code at its largest across the Printer resolutions, so it fits on every PC', () => {
+    // Large QR at 203 dpi (5 dots) ends 23.57 mm down with its quiet zone; at 360 dpi (9 dots) 23.75 mm.
+    const strip: LabelSizeEntry = { id: 'strip', name: 'Strip', widthMm: 40, heightMm: 23.7 }
+    const large: Template = { ...DESIGNED, labelSizeId: strip.id, texts: [], code: { ...DESIGNED.code, moduleSize: 'large', xMm: 20, yMm: 12 } }
+    expect(templateProblems(large, strip)).toEqual(['The code must be at least 1 mm inside the label.'])
+    expect(templateProblems(large, { ...strip, heightMm: 23.8 })).toEqual([])
   })
 
   it('keeps each text box at least 1 mm inside the label', () => {
@@ -54,7 +62,7 @@ describe('templateProblems: a Template to save', () => {
     const seven = { ...DESIGNED, texts: Array.from({ length: 7 }, (_, i) => ({ ...DESIGNED.texts[1], id: `l${i}`, yMm: 2 + i * 3.5, xMm: 20 })) }
     expect(templateProblems(seven, SHELF)).toEqual(['A template has at most 6 text lines.'])
     expect(templateProblems(withText(DESIGNED, 1, { fontSizePt: 9 as never }), SHELF)).toEqual(['Line 2 text size must be 6.5, 8 or 10 pt.'])
-    expect(templateProblems({ ...DESIGNED, code: { ...DESIGNED.code, dotsPerModule: 6 as never } }, SHELF)).toEqual(['The code module size must be 3, 4 or 5 dots.'])
+    expect(templateProblems({ ...DESIGNED, code: { ...DESIGNED.code, moduleSize: 'huge' as never } }, SHELF)).toEqual(['The code module size must be Small, Medium or Large.'])
   })
 
   it('needs a valid value for a fixed code or fixed line', () => {

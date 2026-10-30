@@ -12,7 +12,7 @@ import { SMALL_LABEL, type PcSettings } from '../render/printSettings'
 import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
 import type { DriverResult, PrintServiceDeps } from './printService'
 
-const settings: PcSettings = { printerName: 'ZDesigner GX420t', labelSizeId: SMALL_LABEL.id, offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 } }, logFolder: null }
+const settings: PcSettings = { printerName: 'ZDesigner GX420t', printerResolution: 203, labelSizeId: SMALL_LABEL.id, offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 } }, logFolder: null }
 
 const before = indexItems([{ itemCode: 'PARA01', name: 'SYNTHETIC FICTAMOL TABLET 500MG', baseUnit: 'TAB' }])
 const after = indexItems([
