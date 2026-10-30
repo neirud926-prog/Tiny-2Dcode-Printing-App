@@ -14,6 +14,8 @@
   "compilerOptions": {
     "composite": true,
     "types": ["node"],
-    "customConditions": ["node"]
+    "customConditions": ["node"],
+    // scripts/*.mts run in plain Node, which needs the .ts extension on an import from src/.
+    "rewriteRelativeImportExtensions": true
   }
 }

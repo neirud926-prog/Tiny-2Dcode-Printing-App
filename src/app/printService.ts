@@ -233,6 +233,18 @@ async function tapeCheck(
   return { ok: true, warning: null }
 }
 
+/** Every tape check message names what the printer is set to (see tapeCheck). */
+const TAPE_CHECK_MESSAGE = /printer is set to [\d.]+ mm/
+
+/**
+ * Whether `outcome` came with a tape check refusal or warning (ADR 0004), so the screen shows the
+ * "How to set the printer" link next to it.
+ */
+export function showsPrinterGuide(outcome: PrintOutcome | { ok: false; message: string } | null): boolean {
+  if (outcome === null) return false
+  return TAPE_CHECK_MESSAGE.test(outcome.ok ? (outcome.warning ?? '') : outcome.message)
+}
+
 /** A driver length in mm, to a tenth (`23.9`, `36`). */
 function mm(value: number): string {
   return String(Number(value.toFixed(1)))

@@ -16,14 +16,14 @@ cd src-tauri && cargo check --target x86_64-pc-windows-msvc   # compile-check th
 cd src-tauri && cargo test   # the path-scope, error-code and driver-paper tests (on Windows; elsewhere: rustc --edition 2021 --test src/scope.rs, and src/paper.rs)
 ```
 
-CI (`.github/workflows/ci.yml`) runs the tests on every push and pull request, then builds the Windows `.exe` as `2DCodePrint-<version>.exe` and keeps it as a workflow artifact for 14 days.
+CI (`.github/workflows/ci.yml`) runs the tests on every push and pull request, prints [the Brother PT-P900W guide](docs/brother-p900w-setup.md) to one A4 page (`node scripts/guide-html.mts guide.html`, then headless Chrome; it fails if the guide runs onto a second page), then builds the Windows `.exe` as `2DCodePrint-<version>.exe` and keeps it as a workflow artifact for 14 days.
 
 ### Releasing
 
 1. Set `"version"` in `package.json` (e.g. `0.3.0`) and push to `main`.
-2. Push the matching tag: `git tag v0.3.0 && git push origin v0.3.0`, or run the CI workflow by hand on `main` (Actions → CI → Run workflow) with **Publish release** ticked, which creates the tag. CI builds the app and publishes a GitHub Release with `2DCodePrint-<version>.exe` attached and generated notes. A tag that does not match `package.json` fails the release.
+2. Push the matching tag: `git tag v0.3.0 && git push origin v0.3.0`, or run the CI workflow by hand on `main` (Actions → CI → Run workflow) with **Publish release** ticked, which creates the tag. CI builds the app and publishes a GitHub Release with `2DCodePrint-<version>.exe` and `Brother-PT-P900W-setup.pdf` attached and generated notes. A tag that does not match `package.json` fails the release.
 
-To test the release job without publishing anything, run the CI workflow by hand with **Release dry run** ticked: it creates a draft release, checks exactly that one `.exe` is attached, and deletes it.
+To test the release job without publishing anything, run the CI workflow by hand with **Release dry run** ticked: it creates a draft release, checks exactly the `.exe` and the guide PDF are attached, and deletes it.
 
 ## Deploying on the shared drive
 
@@ -37,7 +37,7 @@ To test the release job without publishing anything, run the CI workflow by hand
 
 ## Brother PT-P900W setup (tape)
 
-A tape printer takes the tape from its own driver, not from the app ([ADR-0004](docs/adr/0004-tape-paper-from-driver-preferences.md)), so each PC with a PT-P900W is set up once in Windows and once in the app:
+A tape printer takes the tape from its own driver, not from the app ([ADR-0004](docs/adr/0004-tape-paper-from-driver-preferences.md)), so each PC with a PT-P900W is set up once in Windows and once in the app. For staff, the one-page guide [docs/brother-p900w-setup.md](docs/brother-p900w-setup.md) walks through it with drawings; the app shows it from **How to set the printer** (on the Settings tab and next to a tape refusal or warning, offline), and each release carries it as `Brother-PT-P900W-setup.pdf` to print and pin beside the printer.
 
 1. **Windows**: Settings → Bluetooth & devices → Printers & scanners → Brother PT-P900W → **Printing preferences** (not Printer properties). Set the tape width to the cassette loaded (e.g. 24 mm) and the length to the Tape Size's length (e.g. 40 mm); set the margin (feed) to its minimum and choose the cut options (auto cut, half cut, chain printing) there. **Apply**.
 2. **App, Settings**: under Label Sizes, **Add** a **Tape** size with the same tape width and length (e.g. "24 mm tape × 40 mm"); choose it as **Label in this printer**; set **Printer resolution** to **360 dpi**; choose the printer; **Test print**. The test label shows its outline and the printable band edges: adjust the X/Y offsets until it sits on the tape, then **Save**.

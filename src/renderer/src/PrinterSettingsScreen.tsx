@@ -21,6 +21,7 @@ import { GTIN_LABEL_SIZES_TEXT, gtinLabelSizeProblem } from '../../render/gtinTa
 import { TAPE_WIDTHS_MM, tapeSizeName } from '../../render/tapeSize'
 import { AppHeader } from './AppHeader'
 import { OutcomeMessage } from './OutcomeMessage'
+import { PrinterGuideLink } from './PrinterGuide'
 
 type OffsetField = 'offsetXmm' | 'offsetYmm'
 type OffsetTexts = Record<OffsetField, string>
@@ -199,6 +200,9 @@ export function PrinterSettingsScreen({
             {mode === 'setup'
               ? `Choose this PC's label printer and label size, then do a test print. These settings are kept for ${pcName} only.`
               : `Settings for ${pcName} only. Other PCs keep their own.`}
+          </p>
+          <p className="settings__guide">
+            Brother PT-P900W tape printer: <PrinterGuideLink />
           </p>
           {notice && (
             <p className="message message--warning settings__notice" role="alert">
