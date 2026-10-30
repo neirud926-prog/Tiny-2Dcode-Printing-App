@@ -17,6 +17,7 @@ import {
   type PcSettings,
   type PcSettingsField
 } from '../../render/printSettings'
+import { gtinLabelSizeProblem } from '../../render/gtinTapeLabel'
 import { TAPE_WIDTHS_MM, tapeSizeName } from '../../render/tapeSize'
 import { AppHeader } from './AppHeader'
 import { OutcomeMessage } from './OutcomeMessage'
@@ -285,8 +286,8 @@ export function PrinterSettingsScreen({
             </div>
             <div className="field__messages" aria-live="polite">
               {sizeMissing && <p className="message message--error">This label size is no longer in the list. Choose the label in this printer.</p>}
-              {!sizeMissing && labelSizeId !== SMALL_LABEL.id && (
-                <p className="message message--warning">GTIN Labels print only on the Small Label ({formatLabelSizeMm(SMALL_LABEL)}).</p>
+              {!sizeMissing && gtinLabelSizeProblem(labelSizeId, sizes) && (
+                <p className="message message--warning">GTIN Labels print only on the Small Label ({formatLabelSizeMm(SMALL_LABEL)}) or on 18, 24 or 36 mm tape.</p>
               )}
               {mode === 'setup' && sizesMessage && <p className="message message--error">{sizesMessage}</p>}
             </div>

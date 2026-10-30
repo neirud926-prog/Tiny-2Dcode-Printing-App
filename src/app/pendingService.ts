@@ -11,8 +11,9 @@ import { isExpired, pendingLabelRequest, viewPendingLabels, type PendingLabelInp
 import { defaultLockDeps } from '../data/fileLock'
 import { addPending, changePending, readPending, removePending, restorePending } from '../data/pendingStore'
 import type { DeleteExpiredOutcome, DeletePendingOutcome, PendingLabelsList, PrintOutcome, SavePendingOutcome } from '../preload/api'
-import type { PcSettings } from '../render/printSettings'
-import { gtinLabelSizeProblem, printLabelRequest, type PrintContext, type PrintServiceDeps } from './printService'
+import { gtinLabelSizeProblem } from '../render/gtinTapeLabel'
+import type { LabelSizeEntry, PcSettings } from '../render/printSettings'
+import { printLabelRequest, type PrintContext, type PrintServiceDeps } from './printService'
 
 /** Lists the Pending Labels against the Item List in use (null if none) and `today` (`yyyy-mm-dd`): the recheck after every import. */
 export async function listPendingLabels(dataFolder: string, itemList: ItemIndex | null, today: string): Promise<PendingLabelsList> {
@@ -46,13 +47,14 @@ export async function savePendingLabel(input: unknown, context: PrintContext, de
 }
 
 /**
- * Prints a Pending Label whose Item Code is now listed. The label is claimed first (removed from
+ * Prints a Pending Label whose Item Code is now listed, on the Label Sizes (`sizes`, the list) any GTIN Label prints on. The label is claimed first (removed from
  * `pending.dat`), so another PC cannot print it too; if it does not print, it is put back.
  */
 export async function printPendingLabel(
   id: unknown,
   packVolumeDigit: unknown,
   settings: PcSettings | null,
+  sizes: readonly LabelSizeEntry[],
   itemList: ItemIndex | null,
   context: PrintContext,
   deps: PrintServiceDeps
@@ -60,7 +62,7 @@ export async function printPendingLabel(
   if (typeof id !== 'string') return refused('the request is not valid.')
   if (packVolumeDigit !== null && packVolumeDigit !== undefined && typeof packVolumeDigit !== 'number') return refused('the request is not valid.')
   if (settings === null) return refused("set up this PC's printer first.")
-  const sizeProblem = gtinLabelSizeProblem(settings)
+  const sizeProblem = gtinLabelSizeProblem(settings.labelSizeId, sizes)
   if (sizeProblem) return refused(sizeProblem)
   if (itemList === null) return refused('import the Item List first.')
 
@@ -81,7 +83,7 @@ export async function printPendingLabel(
   const claimed = await removePending(context.dataFolder, id)
   if (!claimed.ok) return refused(claimed.message)
 
-  const outcome = await printLabelRequest(pendingLabelRequest({ ...claimed.value, packVolumeDigit: digit }), settings, itemList, context, deps)
+  const outcome = await printLabelRequest(pendingLabelRequest({ ...claimed.value, packVolumeDigit: digit }), settings, sizes, itemList, context, deps)
   if (outcome.ok) return outcome
 
   const restored = await restorePending(context.dataFolder, claimed.value)

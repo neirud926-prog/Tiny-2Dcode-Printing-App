@@ -166,6 +166,7 @@ function App(): React.JSX.Element {
           stockOnhand={stockOnhand}
           onStockOnhandChanged={setStockOnhand}
           headerSlot={headerSlot}
+          settings={settings}
           hidden={tab !== 'gtin'}
         />
       </div>

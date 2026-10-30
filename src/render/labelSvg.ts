@@ -28,12 +28,12 @@ export const SYMBOL_TEXT_GAP_MM = 1.2
 export const LOT_OWN_LINE_AFTER = 15
 export const FONT_FAMILY = 'Arial, Helvetica, sans-serif'
 
-const DETAIL_PT = 6.5
+export const DETAIL_PT = 6.5
 const ITEM_CODE_PT = DETAIL_PT
 const PACK_VOLUME_PT = DETAIL_PT
 const PACK_VOLUME_GAP_MM = 0.7
 /** Baseline to baseline between the Item Code, EXP and LOT lines. */
-const DETAIL_LINE_PITCH_MM = DETAIL_PT * MM_PER_PT * 1.25
+export const DETAIL_LINE_PITCH_MM = DETAIL_PT * MM_PER_PT * 1.25
 /** From the bottom of the symbol row to the top of a Lot on its own line (well over one module of quiet zone). */
 const OWN_LINE_GAP_MM = 1.0
 /** Arial / Helvetica capital height and descent, in em. */
@@ -80,11 +80,7 @@ export interface LabelLayout {
 export function layoutLabel(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE, dpi: PrinterResolution = DEFAULT_PRINTER_RESOLUTION): LabelLayout {
   const dataMatrix = renderDataMatrix(label, dpi)
   const lotOnOwnLine = label.lot.length > LOT_OWN_LINE_AFTER
-
-  const itemCodeRuns: TextRun[] = [run(label.itemCode, ITEM_CODE_PT, true)]
-  if (label.packVolumeText !== null) itemCodeRuns.push(run(label.packVolumeText, PACK_VOLUME_PT, true, PACK_VOLUME_GAP_MM))
-  const expiryRuns = [run('EXP', DETAIL_PT, true), run(` ${label.expiryText}`, DETAIL_PT, false)]
-  const lotRuns = [run('LOT', DETAIL_PT, true), run(` ${label.lot}`, DETAIL_PT, false)]
+  const { itemCodeRuns, expiryRuns, lotRuns } = gtinTextRuns(label)
 
   // Text block beside the symbol, as offsets from its top.
   const itemCodeBaseline = capHeightMm(ITEM_CODE_PT)
@@ -116,6 +112,17 @@ export function layoutLabel(label: Label, size: LabelSize = DEFAULT_LABEL_SIZE, 
     lotLine,
     lotOnOwnLine,
     content: { topMm: contentTop, bottomMm: contentTop + contentHeight }
+  }
+}
+
+/** The text of a GTIN Label: Item Code + Pack Volume (bold), EXP and LOT lines, all 6.5 pt. */
+export function gtinTextRuns(label: Label): { itemCodeRuns: TextRun[]; expiryRuns: TextRun[]; lotRuns: TextRun[] } {
+  const itemCodeRuns: TextRun[] = [run(label.itemCode, ITEM_CODE_PT, true)]
+  if (label.packVolumeText !== null) itemCodeRuns.push(run(label.packVolumeText, PACK_VOLUME_PT, true, PACK_VOLUME_GAP_MM))
+  return {
+    itemCodeRuns,
+    expiryRuns: [run('EXP', DETAIL_PT, true), run(` ${label.expiryText}`, DETAIL_PT, false)],
+    lotRuns: [run('LOT', DETAIL_PT, true), run(` ${label.lot}`, DETAIL_PT, false)]
   }
 }
 
@@ -183,7 +190,7 @@ export function capHeightMm(fontSizePt: number): number {
   return fontSizePt * MM_PER_PT * CAP_HEIGHT_EM
 }
 
-function descentMm(fontSizePt: number): number {
+export function descentMm(fontSizePt: number): number {
   return fontSizePt * MM_PER_PT * DESCENT_EM
 }
 
@@ -192,7 +199,7 @@ export function snapToDot(mmValue: number, dpi: PrinterResolution): number {
   return Math.round(mmValue / dotMm(dpi)) * dotMm(dpi)
 }
 
-function floorToDot(mmValue: number, dpi: PrinterResolution): number {
+export function floorToDot(mmValue: number, dpi: PrinterResolution): number {
   return Math.floor(mmValue / dotMm(dpi) + 1e-9) * dotMm(dpi)
 }
 

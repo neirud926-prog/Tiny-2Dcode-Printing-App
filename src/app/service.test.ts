@@ -8,7 +8,7 @@ import { pcSettingsPath } from '../data/pcSettings'
 import { writeSealed } from '../data/sealed'
 import { templatesPath } from '../data/templateStore'
 import { tempFolder } from '../data/testFolder'
-import { DOT_MM } from '../render/dataMatrix'
+import { dotMm, DOT_MM } from '../render/dataMatrix'
 import type { CustomLabelRequest } from '../render/customLabel'
 import type { LabelPrintJob } from '../render/printJob'
 import { SMALL_LABEL, type PcSettings } from '../render/printSettings'
@@ -18,14 +18,20 @@ import { createAppService } from './service'
 const printer = 'ZDesigner GX420t'
 const request: LabelRequest = { itemCode: 'PARA01', packVolumeDigit: 0, expiry: '31122099', lot: 'A1', copies: 1 }
 
-/** The app on one PC over a shared data folder, with a fake printer that records each job. */
-async function pc(dataFolder: string, pcName: string): Promise<{ api: PreloadApi; jobs: LabelPrintJob[] }> {
+/** The synthetic Item List (PARA01, PARA18, …). */
+const itemListFixture = join(__dirname, '../../test-fixtures/item_phq-synthetic.txt')
+
+/**
+ * The app on one PC over a shared data folder, with a fake printer that records each job; the file
+ * dialog returns `chosenFile` (null: cancelled).
+ */
+async function pc(dataFolder: string, pcName: string, chosenFile: string | null = null): Promise<{ api: PreloadApi; jobs: LabelPrintJob[] }> {
   const jobs: LabelPrintJob[] = []
   const api = createAppService({
     dataFolder,
     pcName,
     windowsUser: 'chantm',
-    chooseFile: async () => null,
+    chooseFile: async () => chosenFile,
     listPrinters: async () => [{ name: printer, displayName: printer }],
     sendToPrinter: async (job) => {
       jobs.push(job)
@@ -38,6 +44,12 @@ async function pc(dataFolder: string, pcName: string): Promise<{ api: PreloadApi
 
 function settingsFor(labelSizeId: string, offsets: PcSettings['offsets'] = {}, printerResolution: PcSettings['printerResolution'] = 203): PcSettings {
   return { printerName: printer, printerResolution, labelSizeId, offsets, logFolder: null }
+}
+
+async function addTape(api: PreloadApi, tapeWidthMm: number, lengthMm: number): Promise<string> {
+  const added = await api.addLabelSize({ kind: 'tape', name: '', tapeWidthMm, lengthMm })
+  if (!added.ok) throw new Error(added.message)
+  return added.sizes.find((size) => size.kind === 'tape' && size.heightMm === tapeWidthMm && size.widthMm === lengthMm)!.id
 }
 
 async function addSize(api: PreloadApi, name: string, widthMm: number, heightMm: number): Promise<string> {
@@ -185,15 +197,77 @@ describe('the loaded Label Size', () => {
     expect(jobs).toHaveLength(0)
   })
 
-  it('must be the Small Label for a GTIN Label', async () => {
-    const { api, jobs } = await pc(await tempFolder(), 'PHARM-01')
+  it('must be the Small Label or 18, 24 or 36 mm tape for a GTIN Label', async () => {
+    const { api, jobs } = await pc(await tempFolder(), 'PHARM-01', itemListFixture)
+    expect((await api.importItemList()).status).toBe('imported')
+    const refusal = 'Not printed: GTIN Labels print on the Small Label (34.4 × 25 mm) or on 18, 24 or 36 mm tape. Change the label in Settings.'
     const shelf = await addSize(api, 'Shelf', 50, 30)
     expect((await api.savePrinterSettings(settingsFor(shelf))).ok).toBe(true)
-    expect(await api.printLabel(request)).toEqual({
-      ok: false,
-      message: 'Not printed: GTIN Labels print on the Small Label (34.4 × 25 mm). Change the label in Settings.'
-    })
+    expect(await api.printLabel(request)).toEqual({ ok: false, message: refusal })
+    const narrow = await addTape(api, 12, 40)
+    expect((await api.savePrinterSettings(settingsFor(narrow))).ok).toBe(true)
+    expect(await api.printLabel(request)).toEqual({ ok: false, message: refusal })
     expect(jobs).toHaveLength(0)
+  })
+})
+
+describe('GTIN Labels on tape', () => {
+  /** A request the label core accepts: its Expiry is within the years scanners read. */
+  const printable: LabelRequest = { ...request, expiry: '31122030' }
+
+  async function onTape(tapeWidthMm: number, lengthMm: number, printerResolution: PcSettings['printerResolution'] = 360) {
+    const app = await pc(await tempFolder(), 'PHARM-01', itemListFixture)
+    expect((await app.api.importItemList()).status).toBe('imported')
+    const tape = await addTape(app.api, tapeWidthMm, lengthMm)
+    expect((await app.api.savePrinterSettings(settingsFor(tape, { [tape]: { offsetXmm: 0, offsetYmm: -3 * dotMm(printerResolution) } }, printerResolution))).ok).toBe(true)
+    return app
+  }
+
+  it.each([18, 24, 36])('print on %s mm tape with the tape layout, on the driver\'s paper, turned to run along the tape', async (tapeWidthMm) => {
+    const { api, jobs } = await onTape(tapeWidthMm, 40)
+    expect(await api.printLabel({ ...printable, copies: 2 })).toEqual({ ok: true, message: `Printed 2 labels on ${printer}.`, warning: null })
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0].options).toMatchObject({ deviceName: printer, pageSize: null, copies: 2 })
+    expect(jobs[0].html).toContain(`html,body{margin:0;padding:0;width:${tapeWidthMm}mm;height:40mm;`)
+    expect(jobs[0].html).toContain(`rotate(90deg) translate(0.0000mm,${(-3 * dotMm(360)).toFixed(4)}mm)`)
+    expect(jobs[0].html).toContain(`width="40mm" height="${tapeWidthMm}mm" viewBox="0 0 40 ${tapeWidthMm}"`)
+    // The 20 × 20 symbol at 7 dots a module: 20 × 7 × 25.4 / 360 = 9.8778 mm.
+    expect(jobs[0].html).toContain('width="9.8778"')
+    expect(jobs[0].html).toContain('>PARA01</tspan>')
+  })
+
+  it('are refused on tape too short for them, naming the minimum length, and print once it is long enough', async () => {
+    const { api, jobs } = await onTape(24, 20)
+    const refused = await api.printLabel(printable)
+    const minimum = Number(/at least (\d+) mm long/.exec(refused.message)?.[1])
+    expect(refused).toEqual({ ok: false, message: `Not printed: This GTIN Label needs tape at least ${minimum} mm long; the loaded Tape Size is 20 mm. Add a longer Tape Size in Settings.` })
+    expect(minimum).toBeGreaterThan(20)
+    expect(jobs).toHaveLength(0)
+
+    const longEnough = await addTape(api, 24, minimum)
+    expect((await api.savePrinterSettings(settingsFor(longEnough, {}, 360))).ok).toBe(true)
+    expect(await api.printLabel(printable)).toMatchObject({ ok: true })
+    expect(jobs).toHaveLength(1)
+  })
+
+  it('are what Pending Labels print, on the same rule', async () => {
+    const { api, jobs } = await onTape(24, 40)
+    expect(await api.savePendingLabel({ itemCode: 'PARA01', packVolumeDigit: null, expiry: '31122030', lot: 'A1', copies: 1 })).toMatchObject({ ok: true })
+    const listed = await api.listPendingLabels()
+    const id = listed.ok ? listed.labels[0].id : ''
+    expect(await api.printPendingLabel(id, null)).toMatchObject({ ok: true })
+    expect(jobs[0].options.pageSize).toBeNull()
+    expect(jobs[0].html).toContain('width="40mm" height="24mm" viewBox="0 0 40 24"')
+
+    expect(await api.savePendingLabel({ itemCode: 'PARA01', packVolumeDigit: null, expiry: '31122030', lot: 'A2', copies: 1 })).toMatchObject({ ok: true })
+    const narrow = await addTape(api, 12, 40)
+    expect((await api.savePrinterSettings(settingsFor(narrow, {}, 360))).ok).toBe(true)
+    const again = await api.listPendingLabels()
+    expect(await api.printPendingLabel(again.ok ? again.labels[0].id : '', null)).toEqual({
+      ok: false,
+      message: 'Not printed: GTIN Labels print on the Small Label (34.4 × 25 mm) or on 18, 24 or 36 mm tape. Change the label in Settings.'
+    })
+    expect(jobs).toHaveLength(1)
   })
 })
 

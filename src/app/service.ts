@@ -28,7 +28,7 @@ import type {
   SaveSettingsOutcome,
   StockLotsLookup
 } from '../preload/api'
-import { normalisePcSettings, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
+import { normalisePcSettings, SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import type { AppHost } from './host'
 import { itemLookupFor, stockLotsLookupFor } from './itemLookup'
 import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
@@ -74,7 +74,7 @@ export function createAppService(host: AppHost): PreloadApi {
     printLabel: (request) =>
       exclusively(async () => {
         const itemList = folderReady ? await itemLists.current() : null
-        return printLabelRequest(request, folderReady ? settings : null, itemList?.index ?? null, context, deps)
+        return printLabelRequest(request, folderReady ? settings : null, await gtinSizes(), itemList?.index ?? null, context, deps)
       }),
     savePendingLabel: (request) =>
       folderReady ? savePendingLabel(request, context, deps) : Promise.resolve<SavePendingOutcome>({ ok: false, message: 'Not saved: the data folder is not ready.' }),
@@ -82,7 +82,7 @@ export function createAppService(host: AppHost): PreloadApi {
     printPendingLabel: (id, packVolumeDigit) =>
       exclusively(async () => {
         const itemList = folderReady ? await itemLists.current() : null
-        return printPendingLabel(id, packVolumeDigit, folderReady ? settings : null, itemList?.index ?? null, context, deps)
+        return printPendingLabel(id, packVolumeDigit, folderReady ? settings : null, await gtinSizes(), itemList?.index ?? null, context, deps)
       }),
     deletePendingLabel: (id) =>
       folderReady ? deletePendingLabel(dataFolder, id) : Promise.resolve<DeletePendingOutcome>({ ok: false, message: 'The data folder is not ready.' }),
@@ -121,6 +121,12 @@ export function createAppService(host: AppHost): PreloadApi {
       const deleted = await deleteLabelSize(dataFolder, id, (sizeId) => isLabelSizeInUse(dataFolder, sizeId))
       return deleted.ok ? readLabelSizes(dataFolder) : deleted
     }
+  }
+
+  /** The Label Sizes a GTIN Label is checked against: the Small Label alone while the list cannot be read. */
+  async function gtinSizes(): Promise<readonly LabelSizeEntry[]> {
+    const sizes = folderReady ? await readLabelSizes(dataFolder) : null
+    return sizes?.ok ? sizes.sizes : [SMALL_LABEL]
   }
 
   function notReady(): Promise<{ ok: false; message: string }> {

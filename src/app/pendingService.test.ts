@@ -8,11 +8,14 @@ import { appendPrintLog, PRINT_LOG_HEADER } from '../data/printLog'
 import { tempFolder } from '../data/testFolder'
 import { DOT_MM } from '../render/dataMatrix'
 import type { LabelPrintJob } from '../render/printJob'
-import { SMALL_LABEL, type PcSettings } from '../render/printSettings'
+import { SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
 import type { DriverResult, PrintServiceDeps } from './printService'
 
 const settings: PcSettings = { printerName: 'ZDesigner GX420t', printerResolution: 203, labelSizeId: SMALL_LABEL.id, offsets: { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 } }, logFolder: null }
+
+/** The Label Size list: the Small Label and another die-cut size. */
+const sizes: readonly LabelSizeEntry[] = [SMALL_LABEL, { id: 'other', name: 'Other', kind: 'label', widthMm: 50, heightMm: 30 }]
 
 const before = indexItems([{ itemCode: 'PARA01', name: 'SYNTHETIC FICTAMOL TABLET 500MG', baseUnit: 'TAB' }])
 const after = indexItems([
@@ -83,7 +86,7 @@ describe('Pending Labels', () => {
     await savePendingLabel(tablet, context, deps)
     const { id } = await firstPending(dataFolder, after)
 
-    const outcome = await printPendingLabel(id, null, settings, after, context, deps)
+    const outcome = await printPendingLabel(id, null, settings, sizes, after, context, deps)
     expect(outcome).toEqual({ ok: true, message: 'Printed 2 labels on ZDesigner GX420t.', warning: null })
     expect(jobs).toHaveLength(1)
     expect(jobs[0].options).toMatchObject({ copies: 2 })
@@ -97,13 +100,13 @@ describe('Pending Labels', () => {
     expect(await listPendingLabels(dataFolder, after, today)).toEqual({ ok: true, labels: [] })
   })
 
-  it('keeps a Pending Label unprinted unless the Small Label is loaded', async () => {
+  it('keeps a Pending Label unprinted on another die-cut size', async () => {
     const { dataFolder, context, deps, jobs } = await setup()
     await savePendingLabel(tablet, context, deps)
     const { id } = await firstPending(dataFolder, after)
-    expect(await printPendingLabel(id, null, { ...settings, labelSizeId: 'other' }, after, context, deps)).toEqual({
+    expect(await printPendingLabel(id, null, { ...settings, labelSizeId: 'other' }, sizes, after, context, deps)).toEqual({
       ok: false,
-      message: 'Not printed: GTIN Labels print on the Small Label (34.4 × 25 mm). Change the label in Settings.'
+      message: 'Not printed: GTIN Labels print on the Small Label (34.4 × 25 mm) or on 18, 24 or 36 mm tape. Change the label in Settings.'
     })
     expect(jobs).toHaveLength(0)
     expect((await firstPending(dataFolder, after)).id).toBe(id)
@@ -114,8 +117,8 @@ describe('Pending Labels', () => {
     await savePendingLabel(tablet, context, deps)
     const { id } = (await firstPending(dataFolder, after))
     const [first, second] = await Promise.all([
-      printPendingLabel(id, null, settings, after, context, deps),
-      printPendingLabel(id, null, settings, after, context, deps)
+      printPendingLabel(id, null, settings, sizes, after, context, deps),
+      printPendingLabel(id, null, settings, sizes, after, context, deps)
     ])
     expect([first.ok, second.ok].sort()).toEqual([false, true])
     expect(jobs).toHaveLength(1)
@@ -125,7 +128,7 @@ describe('Pending Labels', () => {
     const { dataFolder, context, deps, jobs } = await setup()
     await savePendingLabel(tablet, context, deps)
     const { id } = (await firstPending(dataFolder, before))
-    const outcome = await printPendingLabel(id, null, settings, before, context, deps)
+    const outcome = await printPendingLabel(id, null, settings, sizes, before, context, deps)
     expect(outcome).toEqual({ ok: false, message: expect.stringContaining('not in the Item List') })
     expect(jobs).toHaveLength(0)
     expect(await listPendingLabels(dataFolder, before, today)).toMatchObject({ labels: [{ id }] })
@@ -135,7 +138,7 @@ describe('Pending Labels', () => {
     const { dataFolder, context, deps, logFile } = await setup({ ok: false, reason: 'out of labels' })
     await savePendingLabel(tablet, context, deps)
     const { id } = (await firstPending(dataFolder, after))
-    const outcome = await printPendingLabel(id, null, settings, after, context, deps)
+    const outcome = await printPendingLabel(id, null, settings, sizes, after, context, deps)
     expect(outcome).toEqual({ ok: false, message: expect.stringContaining('out of labels') })
     expect(await listPendingLabels(dataFolder, after, today)).toMatchObject({ labels: [{ id }] })
     await expect(readFile(logFile)).rejects.toThrow()
@@ -145,9 +148,9 @@ describe('Pending Labels', () => {
     const { dataFolder, context, deps, jobs } = await setup()
     await savePendingLabel({ ...tablet, itemCode: 'NEW002' }, context, deps)
     const { id } = (await firstPending(dataFolder, after))
-    expect(await printPendingLabel(id, null, settings, after, context, deps)).toEqual({ ok: false, message: expect.stringContaining('Pack Volume') })
+    expect(await printPendingLabel(id, null, settings, sizes, after, context, deps)).toEqual({ ok: false, message: expect.stringContaining('Pack Volume') })
     expect(jobs).toHaveLength(0)
-    expect((await printPendingLabel(id, 2, settings, after, context, deps)).ok).toBe(true)
+    expect((await printPendingLabel(id, 2, settings, sizes, after, context, deps)).ok).toBe(true)
     expect(jobs).toHaveLength(1)
   })
 
@@ -180,7 +183,7 @@ describe('Pending Labels', () => {
     it('refuses to print an expired one with a clear message, and keeps it', async () => {
       const { dataFolder, context, deps, jobs } = await setup()
       const expired = await addDirect(dataFolder, 'NEW001', '18102026')
-      const outcome = await printPendingLabel(expired.id, null, settings, after, context, deps)
+      const outcome = await printPendingLabel(expired.id, null, settings, sizes, after, context, deps)
       expect(outcome).toEqual({ ok: false, message: expect.stringMatching(/Not printed: .*NEW001.*expired.*18 OCT 2026/) })
       expect(jobs).toHaveLength(0)
       expect(await listPendingLabels(dataFolder, after, today)).toMatchObject({ labels: [{ id: expired.id, status: 'expired' }] })

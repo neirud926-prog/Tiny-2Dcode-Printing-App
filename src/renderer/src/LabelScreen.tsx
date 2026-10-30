@@ -8,7 +8,8 @@ import { lotPicker, type LotChoice } from '../../core/lotPicker'
 import { itemCodeFromScan, type ScanSource } from '../../core/scanInput'
 import { isStockOnhandForToday, type StockLot, type StockOnhandInfo } from '../../core/stockOnhand'
 import type { ItemLookup, PrintOutcome } from '../../preload/api'
-import { SMALL_LABEL } from '../../render/printSettings'
+import { gtinLabelSizeProblem, gtinTapeLengthProblem } from '../../render/gtinTapeLabel'
+import { SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../../render/printSettings'
 import { LabelPreview } from './LabelPreview'
 import { LotPicker, type LotPickerView } from './LotPicker'
 import { OutcomeMessage } from './OutcomeMessage'
@@ -81,6 +82,8 @@ interface LabelScreenProps {
   onStockOnhandChanged(info: StockOnhandInfo): void
   /** Where the Pending Labels button goes in the app header (shown while this tab is open). */
   headerSlot: HTMLElement | null
+  /** This PC's printer settings: the preview shows the label on the loaded Label Size at its resolution. */
+  settings: PcSettings
   /** Another tab is open; the form keeps what was typed. */
   hidden?: boolean
 }
@@ -92,9 +95,11 @@ export function LabelScreen({
   stockOnhand,
   onStockOnhandChanged,
   headerSlot,
+  settings,
   hidden = false
 }: LabelScreenProps): React.JSX.Element {
   const today = useToday()
+  const sizes = useLabelSizes(settings.labelSizeId)
   const [values, setValues] = useState<FormValues>(EMPTY_FORM)
   const [touched, setTouched] = useState<ReadonlySet<TouchField>>(new Set())
   const [lookup, setLookup] = useState<Lookup | null>(null)
@@ -584,7 +589,12 @@ export function LabelScreen({
           <OutcomeMessage outcome={outcome} />
         </section>
 
-        <LabelPreview result={result} size={SMALL_LABEL} />
+        <LabelPreview
+          result={result}
+          size={sizes?.find((entry) => entry.id === settings.labelSizeId) ?? SMALL_LABEL}
+          dpi={settings.printerResolution}
+          sizeProblem={gtinSizeProblem(result, settings, sizes)}
+        />
       </main>
 
       {unknownDialogFor !== null && (
@@ -609,6 +619,30 @@ export function LabelScreen({
       {pendingOpen && <PendingLabelsDialog list={pending.list} refresh={pending.refresh} onClose={() => setPendingOpen(false)} />}
     </>
   )
+}
+
+/** The Label Size list, read again when another size is loaded; null until read. */
+function useLabelSizes(labelSizeId: string): readonly LabelSizeEntry[] | null {
+  const [sizes, setSizes] = useState<readonly LabelSizeEntry[] | null>(null)
+  useEffect(() => {
+    let current = true
+    void window.api.listLabelSizes().then((list) => {
+      if (current) setSizes(list.ok ? list.sizes : [SMALL_LABEL])
+    })
+    return () => {
+      current = false
+    }
+  }, [labelSizeId])
+  return sizes
+}
+
+/** Why the GTIN Label would be refused on the loaded size (the print path checks it again), or null. */
+function gtinSizeProblem(result: BuildLabelResult, settings: PcSettings, sizes: readonly LabelSizeEntry[] | null): string | null {
+  if (sizes === null) return null
+  const size = sizes.find((entry) => entry.id === settings.labelSizeId)
+  const sizeProblem = gtinLabelSizeProblem(settings.labelSizeId, sizes)
+  if (sizeProblem || !size) return sizeProblem
+  return result.ok ? gtinTapeLengthProblem(result.label, size, settings.printerResolution) : null
 }
 
 interface FieldProps {

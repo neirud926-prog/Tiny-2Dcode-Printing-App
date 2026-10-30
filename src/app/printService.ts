@@ -17,7 +17,8 @@ import type { Template } from '../core/template'
 import { customPrintLogEntryFor, printLogEntryFor, type PrintLogEntry } from '../data/printLog'
 import { buildCustomLabel, templateSizeProblem, type CustomLabelRequest } from '../render/customLabel'
 import { buildCustomLabelPrintJob, buildLabelPrintJob, buildTapeTestPrintJob, sampleLabelRequest, type LabelPrintJob } from '../render/printJob'
-import { printSettingsFor, SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
+import { GTIN_LABEL_SIZE_REFUSAL, gtinLabelSizeProblem, gtinTapeLengthProblem } from '../render/gtinTapeLabel'
+import { printSettingsFor, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import type { PrinterChoice, PrintOutcome } from '../preload/api'
 
 import type { DriverResult } from './host'
@@ -31,14 +32,6 @@ export interface PrintServiceDeps {
   appendLog(logFolder: string, entry: PrintLogEntry): Promise<unknown>
 }
 
-/** Why a GTIN Label is refused when another Label Size is loaded. */
-export const GTIN_NEEDS_SMALL_LABEL = 'GTIN Labels print on the Small Label (34.4 × 25 mm). Change the label in Settings.'
-
-/** GTIN Labels print only when the Small Label is loaded in this PC's printer. */
-export function gtinLabelSizeProblem(settings: PcSettings): string | null {
-  return settings.labelSizeId === SMALL_LABEL.id ? null : GTIN_NEEDS_SMALL_LABEL
-}
-
 export interface PrintContext {
   readonly dataFolder: string
   readonly pcName: string
@@ -46,19 +39,22 @@ export interface PrintContext {
 }
 
 /**
- * Prints the label for `request` on this PC's printer and adds one print log line. `itemList` is the
- * Item List in use (null before one is imported).
+ * Prints the label for `request` on this PC's printer and adds one print log line. `sizes` is the
+ * Label Size list: the loaded size must be the Small Label or 18, 24 or 36 mm tape, which gets the
+ * GTIN tape layout and must be long enough for it. `itemList` is the Item List in use (null before
+ * one is imported).
  */
 export async function printLabelRequest(
   request: unknown,
   settings: PcSettings | null,
+  sizes: readonly LabelSizeEntry[],
   itemList: ItemIndex | null,
   context: PrintContext,
   deps: PrintServiceDeps
 ): Promise<PrintOutcome> {
   if (settings === null) return refused("set up this PC's printer first.")
-  const sizeProblem = gtinLabelSizeProblem(settings)
-  if (sizeProblem) return refused(sizeProblem)
+  const size = sizes.find((entry) => entry.id === settings.labelSizeId)
+  if (!size || gtinLabelSizeProblem(size.id, sizes)) return refused(GTIN_LABEL_SIZE_REFUSAL)
   if (itemList === null) return refused('import the Item List first.')
   if (!isLabelRequest(request)) return refused('the label request is not valid.')
 
@@ -68,7 +64,10 @@ export async function printLabelRequest(
   const problems = itemListProblems(lookupItem(itemList, label.label.itemCode), label.label)
   if (problems.length > 0) return refused(problems.map((problem) => problem.message).join(' '))
 
-  const sent = await send(buildLabelPrintJob(label.label, printSettingsFor(settings, SMALL_LABEL)), deps)
+  const lengthProblem = gtinTapeLengthProblem(label.label, size, settings.printerResolution)
+  if (lengthProblem) return refused(lengthProblem)
+
+  const sent = await send(buildLabelPrintJob(label.label, printSettingsFor(settings, size)), deps)
   if (!sent.ok) return refused(sent.message)
   return logged(printLogEntryFor(label.label, { ...context, at }), settings, context, deps)
 }

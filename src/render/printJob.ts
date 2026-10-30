@@ -8,7 +8,7 @@
 
 import type { Label, LabelRequest } from '../core/label'
 import { renderCustomLabelSvg, type CustomLabel } from './customLabel'
-import { renderLabelSvg } from './labelSvg'
+import { renderGtinLabelSvg } from './gtinTapeLabel'
 import type { LabelSizeEntry, PrintSettings } from './printSettings'
 import { renderTapeTestSvg } from './tapeSize'
 
@@ -37,9 +37,10 @@ export interface LabelPrintJob {
 /** The page can run nothing and load nothing; its one inline `<style>` sets the page size. */
 const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'"
 
-/** The print job for `label` (its copies) on this PC's printer and label roll. */
+/** The print job for `label` (its copies) on this PC's printer and label roll; on tape, in the GTIN tape layout. */
 export function buildLabelPrintJob(label: Label, settings: PrintSettings): LabelPrintJob {
-  return printJobFor(renderLabelSvg(label, settings.labelSize, settings.printerResolution), label.copies, settings)
+  const size = { ...settings.labelSize, kind: settings.onTape === true ? ('tape' as const) : ('label' as const) }
+  return printJobFor(renderGtinLabelSvg(label, size, settings.printerResolution), label.copies, settings)
 }
 
 /** The print job for a Custom Label (its copies) on this PC's printer, with the offsets for its size. */
