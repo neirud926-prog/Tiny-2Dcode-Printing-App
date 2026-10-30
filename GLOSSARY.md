@@ -51,8 +51,16 @@ A label with a 2D code holding short data that staff type, and optional lines of
 _Avoid_: self-defined code, free label
 
 **Label Size**:
-A named label roll size, width × height in mm, in a list shared by every PC; each PC records the one loaded in its printer.
+A named size of the labels or tape loaded in a printer: a die-cut label's width × height in mm, or a Tape Size; in a list shared by every PC; each PC records the one loaded in its printer.
 _Avoid_: paper size, label roll setting
+
+**Tape Size**:
+A Label Size for continuous tape: a tape width (3.5, 6, 9, 12, 18, 24 or 36 mm, the cassette loaded) and a label length; only a band narrower than the tape can be printed on.
+_Avoid_: tape label size, cassette size
+
+**Printer resolution**:
+The dots per inch of a PC's printer (203, 300 or 360); a 2D code's module is a whole number of dots at it.
+_Avoid_: dpi setting, print quality
 
 **Small Label**:
 The built-in Label Size of 34.4 × 25 mm; always present, never changed; the only size a GTIN Label prints on, and the default.
