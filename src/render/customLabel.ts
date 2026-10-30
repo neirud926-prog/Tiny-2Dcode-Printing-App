@@ -25,7 +25,8 @@ import {
 import { moduleMm, PRINTER_RESOLUTIONS, renderPlainCode, type PlainCodeSymbol, type PrinterResolution } from './dataMatrix'
 import { capHeightMm, labelSvgDocument, line, run, snapToDot, WIDTH_SAFETY, type LabelSize, type TextLine } from './labelSvg'
 import { textWidthMm } from './textMetrics'
-import { formatLabelSizeMm, type LabelSizeEntry } from './printSettings'
+import { formatLabelSizeMm, type LabelSizeEntry, type LabelSizeKind } from './printSettings'
+import { isTapeWidthMm, printableBandMm } from './tapeSize'
 
 /** Text squeezed narrower than this share of its width is refused instead. */
 export const MIN_TEXT_SCALE = 0.7
@@ -70,13 +71,16 @@ export interface CustomLabel {
   readonly lines: readonly TextLine[]
 }
 
+/** A Label Size as the fit check sees it: on a Tape Size (`kind: 'tape'`, `heightMm` the tape width) content stays inside the printable band. */
+export type FitSize = LabelSize & { readonly kind?: LabelSizeKind }
+
 export type BuildCustomLabelResult = { ok: true; label: CustomLabel } | { ok: false; errors: CustomFieldMessage[] }
 
 /**
  * Checks what staff typed against `template` on a label of `size`, and lays the label out for a
  * printer of `dpi` (the PC's Printer resolution).
  */
-export function buildCustomLabel(template: Template, size: LabelSize, input: CustomLabelInput, dpi: PrinterResolution): BuildCustomLabelResult {
+export function buildCustomLabel(template: Template, size: FitSize, input: CustomLabelInput, dpi: PrinterResolution): BuildCustomLabelResult {
   const errors: CustomFieldMessage[] = []
 
   const codeValue = template.code.mode === 'fixed' ? (template.code.value ?? '') : input.codeValue
@@ -112,7 +116,10 @@ export function buildCustomLabel(template: Template, size: LabelSize, input: Cus
   // The modules sit on whole printer dots; the code is the same size whatever its data.
   const drawn = renderPlainCode(input.symbology, codeValue, template.code.moduleSize, dpi)
   const symbol = { ...drawn, ...placed(template.code, drawn, dpi) }
-  if (!codeFits(symbol, size)) return { ok: false, errors: [{ field: 'template', message: 'The code does not fit inside the label at its position.' }] }
+  if (!codeFits(symbol, size)) {
+    const where = tapeBand(size) ? 'the printable band of the tape' : 'the label'
+    return { ok: false, errors: [{ field: 'template', message: `The code does not fit inside ${where} at its position.` }] }
+  }
 
   return {
     ok: true,
@@ -162,10 +169,30 @@ export function largestModuleResolution(size: ModuleSize): PrinterResolution {
   return PRINTER_RESOLUTIONS.reduce((largest, dpi) => (moduleMm(size, dpi) > moduleMm(size, largest) ? dpi : largest))
 }
 
-/** The symbol at least 1 mm inside the label, and its quiet zone inside it. */
-function codeFits(symbol: Box & { readonly quietZoneMm: number }, size: LabelSize): boolean {
+/** The printable band across a Tape Size, or null for a die-cut label. */
+function tapeBand(size: FitSize): { topMm: number; bottomMm: number } | null {
+  return size.kind === 'tape' && isTapeWidthMm(size.heightMm) ? printableBandMm(size.heightMm) : null
+}
+
+/**
+ * The symbol at least 1 mm inside the label, and its quiet zone inside it; on a Tape Size, across
+ * the tape the symbol with its quiet zone inside the printable band.
+ */
+function codeFits(symbol: Box & { readonly quietZoneMm: number }, size: FitSize): boolean {
   const margin = Math.max(MIN_EDGE_MM, symbol.quietZoneMm) - 1e-9
-  return symbol.xMm >= margin && symbol.yMm >= margin && symbol.xMm + symbol.widthMm <= size.widthMm - margin && symbol.yMm + symbol.heightMm <= size.heightMm - margin
+  const band = tapeBand(size)
+  const along = symbol.xMm >= margin && symbol.xMm + symbol.widthMm <= size.widthMm - margin
+  if (!band) return along && symbol.yMm >= margin && symbol.yMm + symbol.heightMm <= size.heightMm - margin
+  return along && symbol.yMm - symbol.quietZoneMm >= band.topMm - 1e-9 && symbol.yMm + symbol.heightMm + symbol.quietZoneMm <= band.bottomMm + 1e-9
+}
+
+/** A text box at least 1 mm inside the label; on a Tape Size, across the tape inside the printable band. */
+function textFits(box: Box, size: FitSize): boolean {
+  const edge = MIN_EDGE_MM - 1e-9
+  const band = tapeBand(size)
+  const top = band ? band.topMm - 1e-9 : edge
+  const bottom = band ? band.bottomMm + 1e-9 : size.heightMm - edge
+  return box.xMm >= edge && box.xMm + box.widthMm <= size.widthMm - edge && box.yMm >= top && box.yMm + box.heightMm <= bottom
 }
 
 /** A text line laid out in its box: squeezed if too wide, centred if the Template says so. */
@@ -213,7 +240,7 @@ export function textBox(element: TemplateText): Box {
  * of it fits. Taken over every Printer resolution, so it covers the largest module and a Template
  * that fits on one PC fits on every PC.
  */
-export function codeArea(code: TemplateCode, size: LabelSize): { box: Box; fits: boolean } {
+export function codeArea(code: TemplateCode, size: FitSize): { box: Box; fits: boolean } {
   const symbols = (['datamatrix', 'qr'] as const).flatMap((symbology) =>
     PRINTER_RESOLUTIONS.map((dpi) => {
       const drawn = renderPlainCode(symbology, 'A', code.moduleSize, dpi)
@@ -229,11 +256,12 @@ export function codeArea(code: TemplateCode, size: LabelSize): { box: Box; fits:
 
 /**
  * Why `template` cannot be saved for a label of `size`; empty when it can. Every code it may print
- * and every text box must sit inside the label, the text clear of the code's quiet zone. Positions
+ * and every text box must sit inside the label (on a Tape Size, across the tape inside the printable
+ * band, quiet zone included), the text clear of the code's quiet zone. Positions
  * must be on the designer's 0.5 mm grid, except those kept unchanged from `original` (the stored
  * Template, or the one copied), so a copy of Layout 1 or 2 keeps its exact positions.
  */
-export function templateProblems(template: Template, size: LabelSize, original?: Template | null): string[] {
+export function templateProblems(template: Template, size: FitSize, original?: Template | null): string[] {
   const { code } = template
   if (!MODULE_SIZE_CHOICES.includes(code.moduleSize)) return ['The code module size must be Small, Medium or Large.']
   const problems: string[] = []
@@ -246,7 +274,10 @@ export function templateProblems(template: Template, size: LabelSize, original?:
   const codeMoved = !original || original.code.xMm !== code.xMm || original.code.yMm !== code.yMm
   if (codeMoved && !(onGrid(code.xMm) && onGrid(code.yMm))) problems.push('The code must sit on the 0.5 mm grid.')
   const area = codeArea(code, size)
-  if (!area.fits) problems.push('The code must be at least 1 mm inside the label.')
+  const band = tapeBand(size)
+  if (band && area.box.heightMm > band.bottomMm - band.topMm + 1e-9) {
+    problems.push(`The code with its quiet zone is taller than the printable band of ${size.heightMm} mm tape (${(band.bottomMm - band.topMm).toFixed(1)} mm).`)
+  } else if (!area.fits) problems.push(band ? 'The code must be inside the printable band of the tape, at least 1 mm from the label ends.' : 'The code must be at least 1 mm inside the label.')
 
   template.texts.forEach((element, i) => {
     const name = `Line ${i + 1}`
@@ -258,9 +289,7 @@ export function templateProblems(template: Template, size: LabelSize, original?:
     const moved = !kept || kept.xMm !== element.xMm || kept.yMm !== element.yMm
     if (moved && !(onGrid(element.xMm) && onGrid(element.yMm))) problems.push(`${name} must sit on the 0.5 mm grid.`)
     const box = textBox(element)
-    const edge = MIN_EDGE_MM - 1e-9
-    const inside = box.xMm >= edge && box.yMm >= edge && box.xMm + box.widthMm <= size.widthMm - edge && box.yMm + box.heightMm <= size.heightMm - edge
-    if (!inside) problems.push(`${name} must be at least 1 mm inside the label.`)
+    if (!textFits(box, size)) problems.push(band ? `${name} must be inside the printable band of the tape, at least 1 mm from the label ends.` : `${name} must be at least 1 mm inside the label.`)
     if (overlaps(area.box, box)) problems.push(`${name} overlaps the code.`)
     if (element.mode === 'fixed') {
       const value = element.value ?? ''
@@ -277,15 +306,21 @@ export function templateProblems(template: Template, size: LabelSize, original?:
 /**
  * The designer's preview of `template`: a fixed code's data (else a sample), each fixed line's text
  * and each fill-in line as "Line N", whether or not the layout is valid yet. The code is drawn at its
- * largest, the size the designer's fit check allows for.
+ * largest, the size the designer's fit check allows for. On a Tape Size it reads along the tape,
+ * shaded outside the printable band.
  */
-export function templatePreviewSvg(template: Template, size: LabelSize): string {
+export function templatePreviewSvg(template: Template, size: FitSize): string {
   const { code } = template
   const codeValue = code.mode === 'fixed' && code.value && !codeValueProblem(code.value) ? code.value : 'SAMPLE'
   const dpi = largestModuleResolution(code.moduleSize)
   const drawn = renderPlainCode(code.symbology, codeValue, code.moduleSize, dpi)
   const lines = template.texts.map((text, i) => layOutText(text, text.mode === 'fixed' ? (text.value ?? '') : `Line ${i + 1}`))
-  return labelSvgDocument(size, { ...drawn, ...placed(code, drawn, dpi) }, lines)
+  const svg = labelSvgDocument(size, { ...drawn, ...placed(code, drawn, dpi) }, lines)
+  const band = tapeBand(size)
+  if (!band) return svg
+  const shade = (yMm: number, heightMm: number): string =>
+    `<rect x="0" y="${Number(yMm.toFixed(4))}" width="${size.widthMm}" height="${Number(heightMm.toFixed(4))}" fill="#98a2b3" fill-opacity="0.35"/>`
+  return svg.replace(/<\/svg>$/, `${shade(0, band.topMm)}${shade(band.bottomMm, size.heightMm - band.bottomMm)}</svg>`)
 }
 
 /** Why code data cannot be printed, or null. */

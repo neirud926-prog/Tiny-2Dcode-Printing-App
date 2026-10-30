@@ -104,3 +104,48 @@ describe('templateProblems: a Template to save', () => {
     expect(templateProblems({ ...copy, code: { ...copy.code, yMm: 12 } }, SMALL_LABEL, copy)).toEqual([])
   })
 })
+
+describe('templateProblems: a Template for a Tape Size', () => {
+  // 24 mm tape × 50 mm: the printable band is 0.71–23.29 mm across the tape (320 dots at 360 dpi).
+  const TAPE_24: LabelSizeEntry = { id: 'tape-24', name: '24 mm tape × 50 mm', kind: 'tape', widthMm: 50, heightMm: 24 }
+  const DIE_CUT_24: LabelSizeEntry = { ...TAPE_24, id: 'die-cut', kind: 'label' }
+  const onTape = (yMm: number): Template => ({ ...DESIGNED, labelSizeId: TAPE_24.id, texts: [], code: { ...DESIGNED.code, moduleSize: 'small', yMm } })
+  const OUTSIDE = 'The code must be inside the printable band of the tape, at least 1 mm from the label ends.'
+
+  it('keeps the code with its quiet zone inside the printable band, where a die-cut label of that size would take it', () => {
+    // Small: the QR at 360 dpi with its quiet zone spans 7 mm above the centre and 6.9 mm below.
+    expect(templateProblems(onTape(7.5), DIE_CUT_24)).toEqual([])
+    expect(templateProblems(onTape(7.5), TAPE_24)).toEqual([OUTSIDE])
+    expect(templateProblems(onTape(8), TAPE_24)).toEqual([])
+    expect(templateProblems(onTape(16.5), DIE_CUT_24)).toEqual([])
+    expect(templateProblems(onTape(16.5), TAPE_24)).toEqual([OUTSIDE])
+    expect(templateProblems(onTape(16), TAPE_24)).toEqual([])
+  })
+
+  it('keeps each text box inside the printable band, and 1 mm from the label ends', () => {
+    // 36 mm tape: the band is 1.98–34.02 mm; an 8 pt line is 2.62 mm high.
+    const tape36: LabelSizeEntry = { id: 'tape-36', name: 'Wide', kind: 'tape', widthMm: 60, heightMm: 36 }
+    const lineAt = (xMm: number, yMm: number): Template => ({ ...DESIGNED, labelSizeId: tape36.id, texts: [{ ...DESIGNED.texts[1], xMm, yMm }] })
+    const outside = 'Line 1 must be inside the printable band of the tape, at least 1 mm from the label ends.'
+    expect(templateProblems(lineAt(20, 1.5), { ...tape36, kind: 'label' })).toEqual([])
+    expect(templateProblems(lineAt(20, 1.5), tape36)).toEqual([outside])
+    expect(templateProblems(lineAt(20, 2), tape36)).toEqual([])
+    expect(templateProblems(lineAt(20, 31.5), tape36)).toEqual([outside])
+    expect(templateProblems(lineAt(20, 31), tape36)).toEqual([])
+    expect(templateProblems(lineAt(32.5, 20), tape36)).toEqual([outside])
+  })
+
+  it('refuses a narrow tape whose band cannot hold the code at its module size', () => {
+    const tape9: LabelSizeEntry = { id: 'tape-9', name: '9 mm tape × 40 mm', kind: 'tape', widthMm: 40, heightMm: 9 }
+    const template: Template = { ...DESIGNED, labelSizeId: tape9.id, texts: [], code: { ...DESIGNED.code, moduleSize: 'small', xMm: 20, yMm: 4.5 } }
+    expect(templateProblems(template, tape9)).toEqual(['The code with its quiet zone is taller than the printable band of 9 mm tape (7.5 mm).'])
+  })
+
+  it('previews the label as it reads along the tape, shaded outside the printable band', () => {
+    const svg = templatePreviewSvg(onTape(12), TAPE_24)
+    expect(svg).toMatch(/^<svg xmlns="http:\/\/www.w3.org\/2000\/svg" width="50mm" height="24mm"/)
+    expect(svg).toContain('<rect x="0" y="0" width="50" height="0.7111" fill="#98a2b3" fill-opacity="0.35"/>')
+    expect(svg).toContain('<rect x="0" y="23.2889" width="50" height="0.7111" fill="#98a2b3" fill-opacity="0.35"/>')
+    expect(templatePreviewSvg(onTape(12), DIE_CUT_24)).not.toContain('fill-opacity')
+  })
+})
