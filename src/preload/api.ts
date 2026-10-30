@@ -126,7 +126,7 @@ export type DeleteExpiredOutcome = { readonly ok: true; readonly deleted: number
 
 export type SaveSettingsOutcome = { readonly ok: true; readonly settings: PcSettings } | { readonly ok: false; readonly message: string }
 
-/** The Label Sizes, shared by every PC: the built-in Small Label and Topup tape first, then those added. */
+/** The Label Sizes, shared by every PC: the built-in Small Label and Topup Tape Size first, then those added. */
 export type LabelSizesList = { readonly ok: true; readonly sizes: readonly LabelSizeEntry[] } | { readonly ok: false; readonly message: string }
 
 /** The Templates: the built-in Layouts 1 and 2, then those staff saved, shared by every PC. */
@@ -228,6 +228,8 @@ export interface PreloadApi {
    * remembers the code type for this PC.
    */
   printTopupLabel(request: TopupLabelRequest): Promise<PrintOutcome>
+  /** Remembers the Topup Label code type chosen on this PC; never fails (not remembered if the settings cannot be written). */
+  saveTopupSymbology(symbology: Symbology): Promise<void>
   /** The Label Sizes (picking up sizes another PC added). */
   listLabelSizes(): Promise<LabelSizesList>
   /** Adds a Label Size to the shared list (name unique ignoring case); the list after. */

@@ -34,7 +34,7 @@ describe('markdownToHtml (the printer guide shown in the app)', () => {
 
 describe('the Brother PT-P900W guide (docs/brother-p900w-setup.md)', () => {
   it('shows with both its drawings, as the app bundles them', async () => {
-    const docs = join(import.meta.dirname, '..', '..', 'docs')
+    const docs = join(import.meta.dirname, '..', '..', '..', 'docs')
     const images: Record<string, string> = {}
     for (const name of await readdir(join(docs, 'brother-p900w'))) images[`brother-p900w/${name}`] = await readFile(join(docs, 'brother-p900w', name), 'utf8')
     const html = markdownToHtml(await readFile(join(docs, 'brother-p900w-setup.md'), 'utf8'), images)

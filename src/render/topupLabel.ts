@@ -29,7 +29,7 @@ export const TOPUP_TEXT_PT = 8
 export const MAX_TOPUP_MODULE_MM = 0.5
 export const MIN_TOPUP_MODULE_MM = 0.25
 
-/** Why a Topup Label is refused on any Label Size but the built-in Topup tape. */
+/** Why a Topup Label is refused on any Label Size but the built-in Tape Size "24 mm tape × 26 mm". */
 export const TOPUP_LABEL_SIZE_REFUSAL = `Topup Labels print only on the built-in Tape Size "${TOPUP_TAPE_SIZE.name}". Change the label in Settings.`
 
 /** What a Topup Label is made from: the Item Code, its code content (`topupContent`), the code type and copies. */

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { markdownToHtml } from '../../app/markdown'
+import { markdownToHtml } from './markdown'
 import guideMarkdown from '../../../docs/brother-p900w-setup.md?raw'
 
 /** The guide's drawings, bundled with it so it shows offline; keyed as the guide names them. */

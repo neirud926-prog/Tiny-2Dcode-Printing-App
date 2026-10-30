@@ -6,6 +6,7 @@ import { buildTopupLabel, renderTopupLabelSvg, TOPUP_LABEL_SIZE_REFUSAL, type Bu
 import { Field } from './LabelScreen'
 import { LabelFrame } from './LabelPreview'
 import { OutcomeMessage } from './OutcomeMessage'
+import { PrinterGuideLink } from './PrinterGuide'
 
 const SYMBOLOGIES: readonly { value: Symbology; label: string }[] = [
   { value: 'qr', label: 'QR' },
@@ -97,7 +98,14 @@ export function TopupLabelScreen({ settings, templatePicker, symbology, onSymbol
           <p className="message message--hint">
             {TOPUP_TAPE_SIZE.name} ({formatLabelSizeMm(TOPUP_TAPE_SIZE)}), code from the Topup Database, built in
           </p>
-          {sizeProblem && <p className="message message--error">{sizeProblem}</p>}
+          {sizeProblem && (
+            <>
+              <p className="message message--error">{sizeProblem}</p>
+              <p className="outcome__guide">
+                <PrinterGuideLink />
+              </p>
+            </>
+          )}
         </div>
 
         <Field label="Item Code" field="topup-item-code" errors={unknown ? [unknown] : []} hint="Type or scan">

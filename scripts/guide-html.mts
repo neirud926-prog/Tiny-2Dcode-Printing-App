@@ -7,7 +7,7 @@
  */
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { markdownToHtml } from '../src/app/markdown.ts'
+import { markdownToHtml } from '../src/renderer/src/markdown.ts'
 
 const output = process.argv[2]
 if (!output) throw new Error('Usage: node scripts/guide-html.mts <output.html>')

@@ -21,7 +21,7 @@ export function TopupDatabasePanel({ topupDatabase, notice, onImported }: TopupD
     <section className="panel settings" aria-label="Topup Database">
       <h2>Topup Database</h2>
       <p className="settings__intro">
-        The drugs a Topup Label can be printed for. One is built into the app; importing a newer QRCode for Topup workbook replaces it for all PCs
+        The drugs a Topup Label can be printed for. One is built into the app; importing a newer QRCode for Topup.xlsm replaces it for all PCs
         using this folder.
       </p>
       {notice && !importedHere && (

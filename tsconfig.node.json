@@ -9,7 +9,10 @@
     "src/core/**/*",
     "src/render/**/*",
     "src/app/**/*",
-    "src/tauri/**/*.test.ts"
+    "src/tauri/**/*.test.ts",
+    // The renderer's pure printer guide Markdown, also used by scripts/guide-html.mts.
+    "src/renderer/src/markdown.ts",
+    "src/renderer/src/markdown.test.ts"
   ],
   "compilerOptions": {
     "composite": true,

@@ -26,7 +26,7 @@ export const PRINT_LOG_HEADER: readonly string[] = [
   'Template',
   'Code data',
   'Text',
-  // Added in v0.5.
+  // Added in v0.5, at the end, so older files keep their columns.
   'Code type'
 ]
 

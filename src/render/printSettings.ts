@@ -2,7 +2,7 @@
  * This PC's printer settings: which printer, the Label Size loaded in it, and per Label Size the
  * offsets that line the print up with the label. Stored per PC in `pcs/<PC name>.dat`; validated
  * here so the app service (authoritative) and the settings form (live feedback) apply the same rules.
- * Also the Label Sizes themselves, shared by every PC, with the built-in Small Label and Topup tape.
+ * Also the Label Sizes themselves, shared by every PC, with the built-in Small Label and the Topup Tape Size "24 mm tape × 26 mm".
  *
  * Pure: no Node, DOM or Electron.
  */
@@ -83,7 +83,7 @@ export interface PcSettings {
   readonly offsets: Readonly<Record<string, SizeOffsets>>
   /** Where print logs go; null means `logs` in the data folder. */
   readonly logFolder: string | null
-  /** The code type of this PC's last Topup Label (QR when never printed). */
+  /** The Topup Label code type last chosen on this PC (QR when never chosen). */
   readonly topupSymbology?: Symbology
 }
 

@@ -228,7 +228,10 @@ export function countOf(count: number, noun: string): string {
   return `${String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} ${noun}${count === 1 ? '' : 's'}`
 }
 
-/** Upper-cases ASCII a–z only: String.prototype.toUpperCase would turn e.g. "ı" into "I". */
-function upperCaseAscii(value: string): string {
+/** Upper-cases ASCII a–z only, as Item Codes are matched: String.prototype.toUpperCase would turn e.g. "ı" into "I". */
+export function upperCaseAscii(value: string): string {
   return value.replace(/[a-z]/g, (letter) => letter.toUpperCase())
 }
+
+/** Item Code input echoed back in a reply or message is cut to this length (an Item Code has 6 characters). */
+export const MAX_ECHOED_ITEM_CODE_LENGTH = 32

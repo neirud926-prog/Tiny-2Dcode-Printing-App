@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { indexItems } from '../core/itemList'
+import { indexTopup } from '../core/topup'
 import type { LabelRequest } from '../core/label'
 import { appendPrintLog, PRINT_LOG_HEADER } from '../data/printLog'
 import { tempFolder } from '../data/testFolder'
@@ -9,7 +10,7 @@ import { DOT_MM } from '../render/dataMatrix'
 import type { LabelPrintJob } from '../render/printJob'
 import { SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import type { DriverPaper } from './host'
-import { printLabelRequest, printTestLabel, printerProblem, showsPrinterGuide, type DriverResult, type PrintServiceDeps } from './printService'
+import { printLabelRequest, printTestLabel, printTopupLabelRequest, printerProblem, showsPrinterGuide, type DriverResult, type PrintServiceDeps } from './printService'
 
 const request: LabelRequest = { itemCode: 'para18', packVolumeDigit: 2, expiry: '31122027', lot: '2512172-1', copies: 3 }
 
@@ -333,6 +334,14 @@ describe('showsPrinterGuide: the "How to set the printer" link', () => {
         warning: 'Could not check the tape width; check the printer is set to 24 mm tape. The print log could not be written: disk full'
       })
     ).toBe(true)
+  })
+
+  it('shows with the refusal of a Topup Label on any Label Size but the Topup Tape Size', async () => {
+    const { deps, context } = await setup()
+    const topup = indexTopup([{ itemCode: 'FICT01', displayName: 'FICTAMOL', salt: '', formCode: 'TAB' }])
+    const outcome = await printTopupLabelRequest({ itemCode: 'FICT01', symbology: 'qr', copies: 1 }, tapeSettings, topup, context, deps)
+    expect(outcome).toMatchObject({ ok: false, message: expect.stringContaining('Topup Labels print only on the built-in Tape Size') })
+    expect(showsPrinterGuide(outcome)).toBe(true)
   })
 
   it('does not show for a tape that matches, other refusals or no outcome', async () => {

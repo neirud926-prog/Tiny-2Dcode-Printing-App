@@ -48,7 +48,7 @@ export function buildCustomLabelPrintJob(label: CustomLabel, settings: PrintSett
   return printJobFor(renderCustomLabelSvg(label), label.copies, settings)
 }
 
-/** The print job for a Topup Label (its copies) on this PC's printer, on the built-in Topup tape. */
+/** The print job for a Topup Label (its copies) on this PC's printer, on the built-in Tape Size "24 mm tape × 26 mm". */
 export function buildTopupLabelPrintJob(label: TopupLabel, settings: PrintSettings): LabelPrintJob {
   return printJobFor(renderTopupLabelSvg(label), label.copies, settings)
 }

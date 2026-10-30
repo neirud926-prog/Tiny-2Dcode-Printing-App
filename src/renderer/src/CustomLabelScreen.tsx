@@ -170,7 +170,11 @@ export function CustomLabelScreen({ settings }: CustomLabelScreenProps): React.J
       <TopupLabelScreen
         settings={settings}
         symbology={topupSymbology}
-        onSymbology={setTopupSymbology}
+        onSymbology={(choice) => {
+          setTopupSymbology(choice)
+          // Remembered for this PC; a failed save shows nothing.
+          window.api.saveTopupSymbology(choice).catch(() => undefined)
+        }}
         templatePicker={
           <div className="field">
             <label htmlFor="custom-template">Template</label>

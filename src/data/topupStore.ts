@@ -22,7 +22,7 @@ import { platform } from './platform'
 import { readSealed, writeSealed } from './sealed'
 import { createSharedFile } from './sharedFile'
 import builtInData from './topupBuiltIn.json'
-import { readWorkbookSheet } from './workbook'
+import { readWorkbookModified, readWorkbookSheet } from './workbook'
 
 export const TOPUP_FILE_NAME = 'topup.dat'
 
@@ -35,7 +35,7 @@ export type TopupRow = readonly [itemCode: string, displayName: string, salt: st
 /** What `topup.dat` holds. */
 export interface StoredTopupDatabase {
   readonly sourceFileName: string
-  /** The imported workbook's last-modified time, ISO 8601. */
+  /** The imported workbook's date, ISO 8601: when it was last saved as recorded in it, else the file's modified time. */
   readonly sourceModified: string
   /** ISO 8601. */
   readonly importedAt: string
@@ -125,14 +125,14 @@ export async function importTopupFile(
     return { result, database: null }
   }
 
-  let modified: Date
+  let fileModified: Date
   let bytes: Uint8Array
   try {
     const stats = await platform().fs.stat(sourcePath)
     if (stats.size > MAX_TOPUP_FILE_BYTES) {
-      return notImported('Refused', `The file is too large to be the Topup workbook (${Math.ceil(stats.size / (1024 * 1024))} MB).`)
+      return notImported('Refused', `The file is too large to be QRCode for Topup.xlsm (${Math.ceil(stats.size / (1024 * 1024))} MB).`)
     }
-    modified = new Date(stats.mtimeMs)
+    fileModified = new Date(stats.mtimeMs)
     bytes = await platform().fs.readFile(sourcePath)
   } catch (error) {
     return notImported('Failed', `The file could not be read: ${errorText(error)}`)
@@ -145,7 +145,8 @@ export async function importTopupFile(
 
   const stored: StoredTopupDatabase = {
     sourceFileName: platform().path.basename(sourcePath),
-    sourceModified: modified.toISOString(),
+    // Dated like the built-in one, as saved in the workbook; the file's own time only if it does not say.
+    sourceModified: (await readWorkbookModified(bytes)) ?? fileModified.toISOString(),
     importedAt: at.toISOString(),
     importedBy: context.windowsUser,
     pc: context.pcName,

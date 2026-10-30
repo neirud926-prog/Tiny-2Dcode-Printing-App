@@ -74,6 +74,17 @@ describe('lookupTopup', () => {
     expect(lookupTopup(index, 'gas 01')?.itemCode).toBe('GAS 01')
     expect(lookupTopup(index, 'GAS01')).toBeNull()
   })
+
+  it('finds an Item Code written in lower case in the DataBase sheet, keeping it as written', () => {
+    const index = indexTopup([{ itemCode: 'lowc01', displayName: 'LOWER', salt: '', formCode: 'TAB' }])
+    expect(lookupTopup(index, 'LOWC01')?.itemCode).toBe('lowc01')
+    expect(lookupTopup(index, 'lowc01')?.itemCode).toBe('lowc01')
+  })
+
+  it('upper-cases only a–z, so a dotless ı does not match I', () => {
+    const index = indexTopup([{ itemCode: 'FIXI01', displayName: 'FIXI', salt: '', formCode: 'TAB' }])
+    expect(lookupTopup(index, 'fıxı01')).toBeNull()
+  })
 })
 
 describe('topupContent', () => {

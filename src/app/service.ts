@@ -124,9 +124,10 @@ export function createAppService(host: AppHost): PreloadApi {
       exclusively(async () => {
         const database = folderReady ? await topup.current() : builtInTopupDatabase()
         const outcome = await printTopupLabelRequest(request, folderReady ? settings : null, database.index, context, deps)
-        if (outcome.ok) await rememberTopupSymbology(request.symbology)
+        if (outcome.ok) await saveTopupSymbology(request.symbology)
         return outcome
       }),
+    saveTopupSymbology,
     listLabelSizes: () => (folderReady ? readLabelSizes(dataFolder) : notReady()),
     addLabelSize: async (size) => {
       if (!folderReady) return notReady()
@@ -292,13 +293,13 @@ export function createAppService(host: AppHost): PreloadApi {
     }
   }
 
-  /** Keeps the code type of the Topup Label just printed in this PC's settings; not kept if they cannot be written. */
-  async function rememberTopupSymbology(symbology: PcSettings['topupSymbology']): Promise<void> {
-    if (settings === null || settings.topupSymbology === symbology) return
+  /** Keeps the Topup Label code type chosen or printed in this PC's settings; not kept, silently, if they cannot be written. */
+  async function saveTopupSymbology(symbology: unknown): Promise<void> {
+    if (!folderReady || settings === null || (symbology !== 'qr' && symbology !== 'datamatrix') || settings.topupSymbology === symbology) return
     try {
       settings = await savePcSettings(dataFolder, pcName, { ...settings, topupSymbology: symbology })
     } catch {
-      // Only a convenience: the label printed and was logged.
+      // Only a convenience: printing does not depend on it.
     }
   }
 

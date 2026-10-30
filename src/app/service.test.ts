@@ -1,4 +1,4 @@
-import { copyFile, readdir, readFile, utimes, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { LabelRequest } from '../core/label'
@@ -579,15 +579,15 @@ describe('Printer resolution', () => {
   })
 })
 
-describe('the Topup Database', () => {
-  /** The made-up workbook, copied as `QRCode for Topup.xlsx` dated 1 Oct 2026 08:30 local. */
-  async function workbook(fixture = 'topup-synthetic.xlsx'): Promise<string> {
-    const path = join(await tempFolder(), 'QRCode for Topup.xlsx')
-    await copyFile(join(__dirname, '../../test-fixtures', fixture), path)
-    await utimes(path, new Date(2026, 9, 1, 8, 30), new Date(2026, 9, 1, 8, 30))
-    return path
-  }
+/** The made-up workbook, copied as `QRCode for Topup.xlsx` dated 1 Oct 2026 08:30 local. */
+async function workbook(fixture = 'topup-synthetic.xlsx'): Promise<string> {
+  const path = join(await tempFolder(), 'QRCode for Topup.xlsx')
+  await copyFile(join(__dirname, '../../test-fixtures', fixture), path)
+  await utimes(path, new Date(2026, 9, 1, 8, 30), new Date(2026, 9, 1, 8, 30))
+  return path
+}
 
+describe('the Topup Database', () => {
   const builtIn = {
     source: 'built-in',
     sourceFileName: 'QRCode for Topup.xlsm',
@@ -616,7 +616,7 @@ describe('the Topup Database', () => {
     expect(await api.lookupTopup(42 as unknown as string)).toMatchObject({ status: 'unknown', itemCode: '', topupDatabase: builtIn })
   })
 
-  it('is replaced for every PC by an imported workbook, which is logged', async () => {
+  it('is replaced for every PC by an imported workbook, dated as saved in it, which is logged', async () => {
     const folder = await tempFolder()
     const source = await workbook()
     const one = await pc(folder, 'PHARM-01', { chosenFile: source })
@@ -625,7 +625,8 @@ describe('the Topup Database', () => {
     const info = {
       source: 'imported',
       sourceFileName: 'QRCode for Topup.xlsx',
-      sourceModified: new Date(2026, 9, 1, 8, 30).toISOString(),
+      // As Excel recorded it inside the workbook, like the built-in one: not the file's time.
+      sourceModified: '2026-09-30T08:14:44.000Z',
       importedAt: expect.any(String),
       importedBy: 'chantm',
       pc: 'PHARM-01',
@@ -682,6 +683,11 @@ describe('the Topup Database', () => {
     ])
   })
 
+  it("is dated by the file's modified time when the workbook does not record when it was saved", async () => {
+    const { api } = await pc(await tempFolder(), 'PHARM-01', { chosenFile: await workbook('topup-long-entry.xlsx') })
+    expect(await api.importTopupDatabase()).toMatchObject({ status: 'imported', info: { sourceModified: new Date(2026, 9, 1, 8, 30).toISOString(), entries: 2 } })
+  })
+
   it('is not imported when the dialog is cancelled', async () => {
     const { api } = await pc(await tempFolder(), 'PHARM-01')
     expect(await api.importTopupDatabase()).toEqual({ status: 'cancelled' })
@@ -693,7 +699,7 @@ describe('Topup Labels', () => {
   const DIPH32_CONTENT =
     '<drug S="1"><a>DIPH/TET/PER(ADS)/POLIO(INACT) (BOOSTRIX POLIO) BOOSTER</a><b>ACELLULAR PERTUSSIS</b><c></c><d>VAC</d><e></e><f>DIPH32</f><G></G><H></H><I></I><J></J></drug>'
 
-  async function onTopupTape(options: { paper?: DriverPaper | null } = {}) {
+  async function onTopupTapeSize(options: { paper?: DriverPaper | null } = {}) {
     const folder = await tempFolder()
     const app = await pc(folder, 'PHARM-01', options)
     expect((await app.api.savePrinterSettings(settingsFor(TOPUP_TAPE_SIZE.id, {}, 360))).ok).toBe(true)
@@ -714,7 +720,7 @@ describe('Topup Labels', () => {
   })
 
   it('print the Item Code’s Topup Database content as a QR on the driver’s tape, logged as Custom with Template Topup', async () => {
-    const { folder, api, jobs } = await onTopupTape()
+    const { folder, api, jobs } = await onTopupTapeSize()
     expect(await api.printTopupLabel({ itemCode: 'diph32', symbology: 'qr', copies: 2 })).toEqual({ ok: true, message: `Printed 2 labels on ${printer}.`, warning: null })
     expect(jobs).toHaveLength(1)
     expect(jobs[0].options).toMatchObject({ deviceName: printer, pageSize: null, copies: 2 })
@@ -731,14 +737,14 @@ describe('Topup Labels', () => {
   })
 
   it('print a DataMatrix at its own largest module', async () => {
-    const { api, jobs } = await onTopupTape()
+    const { api, jobs } = await onTopupTapeSize()
     expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'datamatrix', copies: 1 })).toMatchObject({ ok: true })
     // 48 × 48 at 5 dots: 48 × 5 × 25.4 / 360 = 16.9333 mm.
     expect(jobs[0].html).toContain('width="16.9333"')
   })
 
   it('are refused on any other Label Size, naming the built-in one', async () => {
-    const { api, jobs } = await onTopupTape()
+    const { api, jobs } = await onTopupTapeSize()
     for (const sizeId of [SMALL_LABEL.id, await addTape(api, 24, 40)]) {
       expect((await api.savePrinterSettings(settingsFor(sizeId))).ok).toBe(true)
       expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'qr', copies: 1 })).toEqual({
@@ -750,7 +756,7 @@ describe('Topup Labels', () => {
   })
 
   it('are refused for an Item Code not in the Topup Database, or a request that is not valid', async () => {
-    const { api, jobs } = await onTopupTape()
+    const { api, jobs } = await onTopupTapeSize()
     expect(await api.printTopupLabel({ itemCode: 'fict01', symbology: 'qr', copies: 1 })).toEqual({ ok: false, message: 'Not printed: FICT01 is not in the Topup Database.' })
     expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'qr', copies: 0 })).toEqual({
       ok: false,
@@ -760,8 +766,23 @@ describe('Topup Labels', () => {
     expect(jobs).toHaveLength(0)
   })
 
+  it('are refused when the code fits only with modules under 0.25 mm', async () => {
+    const folder = await tempFolder()
+    const { api, jobs } = await pc(folder, 'PHARM-01', { chosenFile: await workbook('topup-long-entry.xlsx') })
+    expect(await api.importTopupDatabase()).toMatchObject({ status: 'imported' })
+    expect((await api.savePrinterSettings(settingsFor(TOPUP_TAPE_SIZE.id))).ok).toBe(true)
+    for (const symbology of ['qr', 'datamatrix'] as const) {
+      expect(await api.printTopupLabel({ itemCode: 'LONG01', symbology, copies: 1 })).toEqual({
+        ok: false,
+        message: 'Not printed: The code is too big for 24 mm tape: it fits only with modules under 0.25 mm.'
+      })
+    }
+    expect(await api.printTopupLabel({ itemCode: 'SHRT01', symbology: 'qr', copies: 1 })).toMatchObject({ ok: true })
+    expect(jobs).toHaveLength(1)
+  })
+
   it('are refused when the driver is set to another tape (the tape check)', async () => {
-    const { api, jobs } = await onTopupTape({ paper: { widthMm: 36, lengthMm: null } })
+    const { api, jobs } = await onTopupTapeSize({ paper: { widthMm: 36, lengthMm: null } })
     expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'qr', copies: 1 })).toEqual({
       ok: false,
       message: 'Not printed: The printer is set to 36 mm tape; set 24 mm in its Printing preferences.'
@@ -770,7 +791,7 @@ describe('Topup Labels', () => {
   })
 
   it('remember the last code type printed on this PC only, kept when the printer settings are saved', async () => {
-    const { folder, api } = await onTopupTape()
+    const { folder, api } = await onTopupTapeSize()
     const startup = await api.getStartup()
     expect(startup.status === 'ready' && startup.settings?.topupSymbology).toBeUndefined()
     expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'datamatrix', copies: 1 })).toMatchObject({ ok: true })
@@ -782,5 +803,23 @@ describe('Topup Labels', () => {
     expect(saved.ok && saved.settings.topupSymbology).toBe('datamatrix')
     const other = await (await pc(folder, 'PHARM-02')).api.getStartup()
     expect(other.status === 'ready' && other.settings).toBeNull()
+  })
+
+  it('remember the code type when it is chosen, before any print', async () => {
+    const { folder, api } = await onTopupTapeSize()
+    await api.saveTopupSymbology('datamatrix')
+    const later = await (await pc(folder, 'PHARM-01')).api.getStartup()
+    expect(later.status === 'ready' && later.settings?.topupSymbology).toBe('datamatrix')
+  })
+
+  it('still print when the code type cannot be remembered', async () => {
+    const { folder, api, jobs } = await onTopupTapeSize()
+    // A folder where this PC's settings file should be: the settings cannot be written.
+    const path = pcSettingsPath(folder, 'PHARM-01')
+    await rm(path)
+    await mkdir(path)
+    await expect(api.saveTopupSymbology('datamatrix')).resolves.toBeUndefined()
+    expect(await api.printTopupLabel({ itemCode: 'DIPH32', symbology: 'datamatrix', copies: 1 })).toMatchObject({ ok: true })
+    expect(jobs).toHaveLength(1)
   })
 })

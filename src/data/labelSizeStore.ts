@@ -1,6 +1,6 @@
 /**
  * The Label Sizes in the data folder: `labelsizes.dat`, sealed, shared by every PC, holding the sizes
- * staff added. The Small Label and the Topup tape are built in: always first, never stored, changed or deleted. Every
+ * staff added. The Small Label and the Topup Tape Size "24 mm tape × 26 mm" are built in: always first, never stored, changed or deleted. Every
  * change is made holding the lock file `labelsizes.lock` (see `fileLock`), so two PCs never
  * overwrite each other's change. A damaged or changed `labelsizes.dat` is refused, never replaced.
  */
@@ -35,7 +35,7 @@ export async function isLabelSizeInUse(dataFolder: string, id: string): Promise<
 export type LabelSizesRead = { ok: true; sizes: LabelSizeEntry[] } | { ok: false; message: string }
 export type LabelSizeChange<T> = { ok: true; value: T } | { ok: false; message: string }
 
-/** The Label Sizes: the built-in ones first (the Small Label, then the Topup tape), then those added, in the order added. */
+/** The Label Sizes: the built-in ones first (the Small Label, then the Topup Tape Size), then those added, in the order added. */
 export async function readLabelSizes(dataFolder: string): Promise<LabelSizesRead> {
   const read = await readSealed(labelSizesPath(dataFolder))
   switch (read.status) {

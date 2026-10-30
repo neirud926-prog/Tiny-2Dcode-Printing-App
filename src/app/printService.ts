@@ -9,7 +9,7 @@
  */
 
 import { localIsoDate } from '../core/expiry'
-import { itemListProblems, lookupItem, type ItemIndex } from '../core/itemList'
+import { itemListProblems, lookupItem, MAX_ECHOED_ITEM_CODE_LENGTH, upperCaseAscii, type ItemIndex } from '../core/itemList'
 import { buildLabel, selfCheckLabel, type Label, type LabelRequest } from '../core/label'
 import { errorText } from '../data/atomicWrite'
 import { resolveLogFolder } from '../data/pcSettings'
@@ -130,7 +130,7 @@ export async function printCustomLabelRequest(
 
 /**
  * Prints the Topup Label for `request` on this PC's printer and adds one print log line (Kind
- * Custom, Template Topup). The loaded Label Size must be the built-in Topup tape; the code content
+ * Custom, Template Topup). The loaded Label Size must be the built-in Tape Size "24 mm tape × 26 mm"; the code content
  * comes from `topup`, the Topup Database in use, and the label is laid out here at this PC's
  * Printer resolution.
  */
@@ -145,7 +145,7 @@ export async function printTopupLabelRequest(
   if (settings.labelSizeId !== TOPUP_TAPE_SIZE.id) return refused(TOPUP_LABEL_SIZE_REFUSAL)
   if (!isTopupLabelRequest(request)) return refused('the label request is not valid.')
   const entry = lookupTopup(topup, request.itemCode)
-  if (!entry) return refused(`${request.itemCode.slice(0, 32).toUpperCase()} is not in the Topup Database.`)
+  if (!entry) return refused(`${upperCaseAscii(request.itemCode.slice(0, MAX_ECHOED_ITEM_CODE_LENGTH))} is not in the Topup Database.`)
 
   const at = deps.now()
   const built = buildTopupLabel({ itemCode: entry.itemCode, content: topupContent(entry), symbology: request.symbology, copies: request.copies }, settings.printerResolution)
@@ -268,12 +268,13 @@ async function tapeCheck(
 const TAPE_CHECK_MESSAGE = /printer is set to [\d.]+ mm/
 
 /**
- * Whether `outcome` came with a tape check refusal or warning (ADR 0004), so the screen shows the
- * "How to set the printer" link next to it.
+ * Whether `outcome` came with a tape check refusal or warning (ADR 0004), or the refusal of a Topup
+ * Label on another Label Size, so the screen shows the "How to set the printer" link next to it.
  */
 export function showsPrinterGuide(outcome: PrintOutcome | { ok: false; message: string } | null): boolean {
   if (outcome === null) return false
-  return TAPE_CHECK_MESSAGE.test(outcome.ok ? (outcome.warning ?? '') : outcome.message)
+  if (outcome.ok) return TAPE_CHECK_MESSAGE.test(outcome.warning ?? '')
+  return TAPE_CHECK_MESSAGE.test(outcome.message) || outcome.message.includes(TOPUP_LABEL_SIZE_REFUSAL)
 }
 
 /** A driver length in mm, to a tenth (`23.9`, `36`). */

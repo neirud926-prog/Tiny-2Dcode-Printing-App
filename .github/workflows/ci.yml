@@ -42,7 +42,9 @@ jobs:
         run: |
           node scripts/guide-html.mts "$RUNNER_TEMP/guide.html"
           google-chrome --headless --disable-gpu --no-pdf-header-footer --print-to-pdf=Brother-PT-P900W-setup.pdf "$RUNNER_TEMP/guide.html"
-          pages=$(grep -ac '/Type /Page\b' Brother-PT-P900W-setup.pdf)
+          # Chrome may keep page objects in compressed object streams, so ask a PDF reader (poppler's pdfinfo).
+          command -v pdfinfo >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils; }
+          pages=$(pdfinfo Brother-PT-P900W-setup.pdf | awk '/^Pages:/ { print $2 }')
           if [ "$pages" != 1 ]; then
             echo "::error::The guide prints on $pages pages; shorten docs/brother-p900w-setup.md to one A4 page."
             exit 1

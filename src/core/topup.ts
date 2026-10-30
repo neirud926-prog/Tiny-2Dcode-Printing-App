@@ -3,7 +3,7 @@
  * `QRCode for Topup.xlsm` built in its column B, which the drug top-up system reads.
  */
 
-import { MAX_BAD_ROW_SHARE, MAX_LISTED_BAD_ROWS, type BadRow } from './itemList'
+import { MAX_BAD_ROW_SHARE, MAX_LISTED_BAD_ROWS, upperCaseAscii, type BadRow } from './itemList'
 
 /** One Item Code's entry in the Topup Database. Empty cells are empty strings. */
 export interface TopupEntry {
@@ -37,6 +37,9 @@ export const TOPUP_COLUMNS = {
 
 /** The sheet of the workbook the Topup Database is read from. */
 export const TOPUP_SHEET_NAME = 'DataBase'
+
+/** The length of a Topup Database row's Item Code. */
+const TOPUP_ITEM_CODE_LENGTH = 6
 
 /** A row of the DataBase sheet: its number in the sheet, and its cells from column A. */
 export interface TopupSheetRow {
@@ -85,7 +88,7 @@ export function parseTopupDatabase(rows: readonly TopupSheetRow[]): ParseTopupDa
     const itemCode = cell(columns.itemCode)
     if (itemCode.length !== TOPUP_ITEM_CODE_LENGTH) {
       badRowCount++
-      if (badRows.length < MAX_LISTED_BAD_ROWS) badRows.push({ line: row.number, message: `Row ${row.number}: the Item Code "${itemCode}" is not 6 characters.` })
+      if (badRows.length < MAX_LISTED_BAD_ROWS) badRows.push({ line: row.number, message: `Row ${row.number}: the Item Code "${itemCode}" is not ${TOPUP_ITEM_CODE_LENGTH} characters.` })
       continue
     }
     if (seen.has(itemCode)) {
@@ -104,20 +107,21 @@ export function parseTopupDatabase(rows: readonly TopupSheetRow[]): ParseTopupDa
   return { ok: true, entries, summary: summary(), badRows }
 }
 
-const TOPUP_ITEM_CODE_LENGTH = 6
-
 export type TopupIndex = ReadonlyMap<string, TopupEntry>
 
-/** Indexes entries by Item Code; the first of a repeated Item Code wins. */
+/** Indexes entries by Item Code with a–z upper-cased (each entry kept as written); the first of a repeated Item Code wins. */
 export function indexTopup(entries: Iterable<TopupEntry>): TopupIndex {
   const index = new Map<string, TopupEntry>()
-  for (const entry of entries) if (!index.has(entry.itemCode)) index.set(entry.itemCode, entry)
+  for (const entry of entries) {
+    const key = upperCaseAscii(entry.itemCode)
+    if (!index.has(key)) index.set(key, entry)
+  }
   return index
 }
 
-/** The entry for an Item Code (a–z upper-cased first, as for the Item List), or null. */
+/** The entry for an Item Code, matching a–z in either case as for the Item List, or null. */
 export function lookupTopup(index: TopupIndex, itemCode: string): TopupEntry | null {
-  return index.get(itemCode.replace(/[a-z]/g, (letter) => letter.toUpperCase())) ?? null
+  return index.get(upperCaseAscii(itemCode)) ?? null
 }
 
 /** About the Topup Database in use. */
@@ -126,7 +130,7 @@ export interface TopupDatabaseInfo {
   readonly source: 'built-in' | 'imported'
   /** The workbook's file name, e.g. `QRCode for Topup.xlsm`. */
   readonly sourceFileName: string
-  /** The workbook's date, ISO 8601: its last-modified time (for the built-in one, as saved in the workbook). */
+  /** The workbook's date, ISO 8601: when it was last saved, as recorded in it (else the file's modified time). */
   readonly sourceModified: string
   /** When, by whom and on which PC it was imported, ISO 8601; null for the built-in one. */
   readonly importedAt: string | null
