@@ -63,7 +63,7 @@ The dots per inch of a PC's printer (203, 300 or 360); a 2D code's module is a w
 _Avoid_: dpi setting, print quality
 
 **Small Label**:
-The built-in Label Size of 34.4 × 25 mm; always present, never changed; the only size a GTIN Label prints on, and the default.
+The built-in Label Size of 34.4 × 25 mm; always present, never changed; the default. A GTIN Label prints only on it or on 18, 24 or 36 mm tape.
 _Avoid_: default label, standard label
 
 **Template**:
