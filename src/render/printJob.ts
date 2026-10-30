@@ -9,7 +9,8 @@
 import type { Label, LabelRequest } from '../core/label'
 import { renderCustomLabelSvg, type CustomLabel } from './customLabel'
 import { renderLabelSvg } from './labelSvg'
-import type { PrintSettings } from './printSettings'
+import type { LabelSizeEntry, PrintSettings } from './printSettings'
+import { renderTapeTestSvg } from './tapeSize'
 
 /** The subset of Electron's `WebContentsPrintOptions` a label print uses. */
 export interface LabelPrintOptions {
@@ -18,8 +19,11 @@ export interface LabelPrintOptions {
   readonly printBackground: true
   readonly margins: { readonly marginType: 'none' }
   readonly landscape: false
-  /** Custom page size in microns. */
-  readonly pageSize: { readonly width: number; readonly height: number }
+  /**
+   * Custom page size in microns; null means use the driver's paper (a Tape Size: the tape is set in
+   * the driver's Printing preferences, ADR 0004).
+   */
+  readonly pageSize: { readonly width: number; readonly height: number } | null
   readonly copies: number
   readonly scaleFactor: 100
 }
@@ -43,14 +47,30 @@ export function buildCustomLabelPrintJob(label: CustomLabel, settings: PrintSett
   return printJobFor(renderCustomLabelSvg(label), label.copies, settings)
 }
 
+/** The Test print on a Tape Size: its outline, printable band edges and name, one copy. */
+export function buildTapeTestPrintJob(size: LabelSizeEntry, settings: PrintSettings): LabelPrintJob {
+  return printJobFor(renderTapeTestSvg(size), 1, settings)
+}
+
+/**
+ * On tape the page is the driver's portrait paper, as wide as the tape, so the label (length ×
+ * tape width) is turned a quarter turn clockwise to run along it; the offsets still move it along
+ * the label's own x and y.
+ */
 function printJobFor(svg: string, copies: number, settings: PrintSettings): LabelPrintJob {
   const { widthMm, heightMm } = settings.labelSize
   const w = cssMm(widthMm)
   const h = cssMm(heightMm)
+  const offset = `translate(${settings.offsetXmm.toFixed(4)}mm,${settings.offsetYmm.toFixed(4)}mm)`
+  const onTape = settings.onTape === true
   const style =
-    `@page{size:${w} ${h};margin:0}` +
-    `html,body{margin:0;padding:0;width:${w};height:${h};overflow:hidden;background:white}` +
-    `.label{width:${w};height:${h};transform:translate(${settings.offsetXmm.toFixed(4)}mm,${settings.offsetYmm.toFixed(4)}mm)}` +
+    (onTape
+      ? `@page{margin:0}` +
+        `html,body{margin:0;padding:0;width:${h};height:${w};overflow:hidden;background:white}` +
+        `.label{width:${w};height:${h};transform-origin:0 0;transform:translate(${h},0) rotate(90deg) ${offset}}`
+      : `@page{size:${w} ${h};margin:0}` +
+        `html,body{margin:0;padding:0;width:${w};height:${h};overflow:hidden;background:white}` +
+        `.label{width:${w};height:${h};transform:${offset}}`) +
     `.label svg{display:block}`
   const html =
     `<!doctype html><html><head><meta charset="utf-8">` +
@@ -66,7 +86,7 @@ function printJobFor(svg: string, copies: number, settings: PrintSettings): Labe
       printBackground: true,
       margins: { marginType: 'none' },
       landscape: false,
-      pageSize: { width: Math.round(widthMm * 1000), height: Math.round(heightMm * 1000) },
+      pageSize: onTape ? null : { width: Math.round(widthMm * 1000), height: Math.round(heightMm * 1000) },
       copies,
       scaleFactor: 100
     }

@@ -110,12 +110,10 @@ export type TemplateChangeOutcome =
     }
   | { readonly ok: false; readonly message: string }
 
-/** A Label Size to add. */
-export interface NewLabelSize {
-  readonly name: string
-  readonly widthMm: number
-  readonly heightMm: number
-}
+/** A Label Size to add: a die-cut Label (no kind), or a Tape Size (a blank name becomes "<w> mm tape × <l> mm"). */
+export type NewLabelSize =
+  | { readonly kind?: 'label'; readonly name: string; readonly widthMm: number; readonly heightMm: number }
+  | { readonly kind: 'tape'; readonly name: string; readonly tapeWidthMm: number; readonly lengthMm: number }
 
 export interface PreloadApi {
   /** Checks the data folder can be written and loads this PC's settings and the Item List. */

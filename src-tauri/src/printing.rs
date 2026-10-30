@@ -20,7 +20,8 @@ pub struct LabelPrintJob {
 #[serde(rename_all = "camelCase")]
 pub struct LabelPrintOptions {
     pub device_name: String,
-    pub page_size: PageSizeMicrons,
+    /// None (`null`): use the driver's paper, for a Tape Size (ADR 0004).
+    pub page_size: Option<PageSizeMicrons>,
     pub copies: u32,
 }
 
@@ -238,8 +239,10 @@ fn start_print(
             .CreatePrintSettings()?;
         settings.SetOrientation(COREWEBVIEW2_PRINT_ORIENTATION_PORTRAIT)?;
         settings.SetScaleFactor(1.0)?;
-        settings.SetPageWidth(inches(options.page_size.width))?;
-        settings.SetPageHeight(inches(options.page_size.height))?;
+        if let Some(page_size) = &options.page_size {
+            settings.SetPageWidth(inches(page_size.width))?;
+            settings.SetPageHeight(inches(page_size.height))?;
+        }
         settings.SetMarginTop(0.0)?;
         settings.SetMarginBottom(0.0)?;
         settings.SetMarginLeft(0.0)?;
@@ -249,8 +252,11 @@ fn start_print(
         let settings2: ICoreWebView2PrintSettings2 = settings.cast()?;
         settings2.SetPrinterName(&HSTRING::from(options.device_name.as_str()))?;
         settings2.SetCopies(copies)?;
-        // Without a custom media size WebView2 keeps the driver's paper size, not PageWidth/PageHeight.
-        settings2.SetMediaSize(COREWEBVIEW2_PRINT_MEDIA_SIZE_CUSTOM)?;
+        // Without a custom media size WebView2 keeps the driver's paper size, not PageWidth/PageHeight;
+        // on tape that is what is wanted: the tape set in the driver's Printing preferences.
+        if options.page_size.is_some() {
+            settings2.SetMediaSize(COREWEBVIEW2_PRINT_MEDIA_SIZE_CUSTOM)?;
+        }
         let handler = PrintCompletedHandler::create(Box::new(move |result, status| {
             let _ = done.try_send(print_outcome(
                 result.err().map_or(0, |error| error.code().0),
@@ -306,11 +312,20 @@ mod tests {
         .unwrap();
         assert_eq!(job.html, "<p>x</p>");
         assert_eq!(job.options.device_name, "Zebra ZD421");
-        assert_eq!(
-            (job.options.page_size.width, job.options.page_size.height),
-            (34_400, 25_000)
-        );
+        let page_size = job.options.page_size.unwrap();
+        assert_eq!((page_size.width, page_size.height), (34_400, 25_000));
         assert_eq!(job.options.copies, 3);
+    }
+
+    #[test]
+    fn a_tape_job_uses_the_drivers_paper() {
+        let job: LabelPrintJob = serde_json::from_str(
+            r#"{"html":"<p>x</p>","options":{"silent":true,"deviceName":"Brother PT-P900W","printBackground":true,
+            "margins":{"marginType":"none"},"landscape":false,"pageSize":null,"copies":1,"scaleFactor":100}}"#,
+        )
+        .unwrap();
+        assert!(job.options.page_size.is_none());
+        assert_eq!(job.options.device_name, "Brother PT-P900W");
     }
 
     #[test]

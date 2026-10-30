@@ -96,12 +96,12 @@ export function ensureLabelSize(dataFolder: string, size: LabelSize, deps: LockD
   return changeLabelSizes(
     dataFolder,
     async (sizes) => {
-      const found = sizes.find((entry) => entry.widthMm === size.widthMm && entry.heightMm === size.heightMm)
+      const found = sizes.find((entry) => entry.kind === 'label' && entry.widthMm === size.widthMm && entry.heightMm === size.heightMm)
       if (found) return { ok: true, sizes, value: found }
       const base = formatLabelSizeMm(size)
       let name = base
       for (let n = 2; sizes.some((entry) => entry.name.toLowerCase() === name.toLowerCase()); n++) name = `${base} (${n})`
-      const added: LabelSizeEntry = { id: crypto.randomUUID(), name, widthMm: size.widthMm, heightMm: size.heightMm }
+      const added: LabelSizeEntry = { id: crypto.randomUUID(), name, kind: 'label', widthMm: size.widthMm, heightMm: size.heightMm }
       return { ok: true, sizes: [...sizes, added], value: added }
     },
     deps
@@ -136,12 +136,19 @@ async function changeLabelSizes<T>(
   })
 }
 
+/** The stored sizes, or null if not a valid list; a size stored without a kind is a die-cut Label. */
 function asLabelSizes(value: unknown): LabelSizeEntry[] | null {
   if (!Array.isArray(value)) return null
   const valid = value.every((entry: unknown) => {
     if (typeof entry !== 'object' || entry === null) return false
     const record = entry as Record<string, unknown>
-    return typeof record.id === 'string' && typeof record.name === 'string' && typeof record.widthMm === 'number' && typeof record.heightMm === 'number'
+    return (
+      typeof record.id === 'string' &&
+      typeof record.name === 'string' &&
+      typeof record.widthMm === 'number' &&
+      typeof record.heightMm === 'number' &&
+      (record.kind === undefined || record.kind === 'label' || record.kind === 'tape')
+    )
   })
-  return valid ? (value as LabelSizeEntry[]) : null
+  return valid ? (value as LabelSizeEntry[]).map((size) => ({ ...size, kind: size.kind ?? 'label' })) : null
 }

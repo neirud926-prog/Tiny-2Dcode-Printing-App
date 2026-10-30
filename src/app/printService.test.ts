@@ -7,7 +7,7 @@ import { appendPrintLog, PRINT_LOG_HEADER } from '../data/printLog'
 import { tempFolder } from '../data/testFolder'
 import { DOT_MM } from '../render/dataMatrix'
 import type { LabelPrintJob } from '../render/printJob'
-import { SMALL_LABEL, type PcSettings, type PrintSettings } from '../render/printSettings'
+import { SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import { printLabelRequest, printTestLabel, printerProblem, type DriverResult, type PrintServiceDeps } from './printService'
 
 const request: LabelRequest = { itemCode: 'para18', packVolumeDigit: 2, expiry: '31122027', lot: '2512172-1', copies: 3 }
@@ -20,7 +20,8 @@ const settings: PcSettings = {
 }
 
 /** What Test print is given: the loaded size and its offsets. */
-const testSettings: PrintSettings = { printerName: 'ZDesigner GX420t', labelSize: { widthMm: 30, heightMm: 20 }, offsetXmm: 2 * DOT_MM, offsetYmm: 0 }
+const testSize: LabelSizeEntry = { id: 'small-roll', name: 'Small roll', kind: 'label', widthMm: 30, heightMm: 20 }
+const testSettings: PcSettings = { printerName: 'ZDesigner GX420t', labelSizeId: testSize.id, offsets: { [testSize.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 } }, logFolder: null }
 
 const itemList = indexItems([
   { itemCode: 'PARA01', name: 'SYNTHETIC FICTAMOL TABLET 500MG', baseUnit: 'TAB' },
@@ -194,7 +195,7 @@ describe('printLabelRequest', () => {
 describe('printTestLabel', () => {
   it('prints one TEST01 sample label with the given settings and logs nothing', async () => {
     const { jobs, deps, logFile } = await setup()
-    const outcome = await printTestLabel(testSettings, deps)
+    const outcome = await printTestLabel(testSettings, testSize, deps)
     expect(outcome).toEqual({
       ok: true,
       message: 'Test label sent to ZDesigner GX420t. If it is not centred on the label, adjust the offsets.',
@@ -209,7 +210,7 @@ describe('printTestLabel', () => {
 
   it("reports the driver's reason", async () => {
     const { deps } = await setup({ ok: false, reason: 'Invalid printer settings' })
-    expect(await printTestLabel(testSettings, deps)).toEqual({ ok: false, message: 'Test print failed: the printer reported "Invalid printer settings".' })
+    expect(await printTestLabel(testSettings, testSize, deps)).toEqual({ ok: false, message: 'Test print failed: the printer reported "Invalid printer settings".' })
   })
 })
 

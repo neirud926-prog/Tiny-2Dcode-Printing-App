@@ -16,8 +16,8 @@ import { resolveLogFolder } from '../data/pcSettings'
 import type { Template } from '../core/template'
 import { customPrintLogEntryFor, printLogEntryFor, type PrintLogEntry } from '../data/printLog'
 import { buildCustomLabel, templateSizeProblem, type CustomLabelRequest } from '../render/customLabel'
-import { buildCustomLabelPrintJob, buildLabelPrintJob, sampleLabelRequest, type LabelPrintJob } from '../render/printJob'
-import { printSettingsFor, SMALL_LABEL, type LabelSizeEntry, type PcSettings, type PrintSettings } from '../render/printSettings'
+import { buildCustomLabelPrintJob, buildLabelPrintJob, buildTapeTestPrintJob, sampleLabelRequest, type LabelPrintJob } from '../render/printJob'
+import { printSettingsFor, SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import type { PrinterChoice, PrintOutcome } from '../preload/api'
 
 import type { DriverResult } from './host'
@@ -117,14 +117,26 @@ export async function printCustomLabelRequest(
 }
 
 /**
- * Prints one sample label (Item Code TEST01, Lot TEST) on the loaded Label Size with its offsets,
- * so staff can check the printer and offsets before saving. Test prints carry no real Lot, so they are not written to the print log.
+ * Prints one sample label (Item Code TEST01, Lot TEST) on `size` (the loaded Label Size) with its
+ * offsets, so staff can check the printer and offsets before saving; on a Tape Size it prints the
+ * label outline, the printable band edges and the size name instead. Test prints carry no real Lot,
+ * so they are not written to the print log.
  */
-export async function printTestLabel(settings: PrintSettings, deps: Pick<PrintServiceDeps, 'now' | 'sendToPrinter'>): Promise<PrintOutcome> {
-  const today = localIsoDate(deps.now())
-  const label = checkedLabel(sampleLabelRequest(today), today)
-  if (!label.ok) return { ok: false, message: `Test print failed: ${label.message}` }
-  const sent = await send(buildLabelPrintJob(label.label, settings), deps)
+export async function printTestLabel(
+  settings: PcSettings,
+  size: LabelSizeEntry,
+  deps: Pick<PrintServiceDeps, 'now' | 'sendToPrinter'>
+): Promise<PrintOutcome> {
+  const printSettings = printSettingsFor(settings, size)
+  let job: LabelPrintJob
+  if (size.kind === 'tape') job = buildTapeTestPrintJob(size, printSettings)
+  else {
+    const today = localIsoDate(deps.now())
+    const label = checkedLabel(sampleLabelRequest(today), today)
+    if (!label.ok) return { ok: false, message: `Test print failed: ${label.message}` }
+    job = buildLabelPrintJob(label.label, printSettings)
+  }
+  const sent = await send(job, deps)
   if (!sent.ok) return { ok: false, message: `Test print failed: ${sent.message}` }
   return {
     ok: true,

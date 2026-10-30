@@ -18,7 +18,7 @@ async function names(folder: string): Promise<string[]> {
 describe('Label Sizes store', () => {
   it('has only the Small Label, 34.4 × 25 mm, before any size is added, and stores nothing for it', async () => {
     const folder = await tempFolder()
-    expect(await readLabelSizes(folder)).toEqual({ ok: true, sizes: [{ id: 'small-label', name: 'Small Label', widthMm: 34.4, heightMm: 25 }] })
+    expect(await readLabelSizes(folder)).toEqual({ ok: true, sizes: [{ id: 'small-label', name: 'Small Label', kind: 'label', widthMm: 34.4, heightMm: 25 }] })
     expect(await readdir(folder)).toEqual([])
   })
 

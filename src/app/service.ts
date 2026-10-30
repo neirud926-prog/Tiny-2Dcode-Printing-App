@@ -28,7 +28,7 @@ import type {
   SaveSettingsOutcome,
   StockLotsLookup
 } from '../preload/api'
-import { normalisePcSettings, printSettingsFor, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
+import { normalisePcSettings, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
 import type { AppHost } from './host'
 import { itemLookupFor, stockLotsLookupFor } from './itemLookup'
 import { deleteExpiredPendingLabels, deletePendingLabel, listPendingLabels, printPendingLabel, savePendingLabel } from './pendingService'
@@ -209,7 +209,7 @@ export function createAppService(host: AppHost): PreloadApi {
   async function testPrint(input: unknown): Promise<PrintOutcome> {
     const checked = await checkSettings(input)
     if (!checked.ok) return { ok: false, message: `Test print failed: ${checked.message}` }
-    return exclusively(() => printTestLabel(printSettingsFor(checked.settings, checked.size), deps))
+    return exclusively(() => printTestLabel(checked.settings, checked.size, deps))
   }
 
   async function savePrinterSettings(input: unknown): Promise<SaveSettingsOutcome> {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { LabelSizesList, PrinterChoice, PrintOutcome } from '../../preload/api'
+import type { LabelSizesList, NewLabelSize, PrinterChoice, PrintOutcome } from '../../preload/api'
 import { DOT_MM } from '../../render/dataMatrix'
 import {
   DEFAULT_PC_SETTINGS,
@@ -13,9 +13,11 @@ import {
   snapToPrinterDots,
   type LabelSizeEntry,
   type LabelSizeField,
+  type LabelSizeKind,
   type PcSettings,
   type PcSettingsField
 } from '../../render/printSettings'
+import { TAPE_WIDTHS_MM, tapeSizeName } from '../../render/tapeSize'
 import { AppHeader } from './AppHeader'
 import { OutcomeMessage } from './OutcomeMessage'
 
@@ -349,7 +351,7 @@ export function PrinterSettingsScreen({
 }
 
 type NewSizeTexts = Record<LabelSizeField, string>
-const NO_NEW_SIZE: NewSizeTexts = { name: '', widthMm: '', heightMm: '' }
+const NO_NEW_SIZE: NewSizeTexts = { name: '', widthMm: '', heightMm: '', tapeWidthMm: '24', lengthMm: '' }
 
 /** The Label Sizes shared by every PC: the Small Label first, others added and deleted here. */
 function LabelSizesPanel({
@@ -361,12 +363,17 @@ function LabelSizesPanel({
   message: string | null
   onChanged(list: LabelSizesList): void
 }): React.JSX.Element {
+  const [kind, setKind] = useState<LabelSizeKind>('label')
   const [typed, setTyped] = useState<NewSizeTexts>(NO_NEW_SIZE)
   const [tried, setTried] = useState(false)
   const [busy, setBusy] = useState(false)
   const [refused, setRefused] = useState<string | null>(null)
 
-  const checked = normaliseLabelSize({ name: typed.name, widthMm: parseMm(typed.widthMm), heightMm: parseMm(typed.heightMm) })
+  const input: NewLabelSize =
+    kind === 'tape'
+      ? { kind, name: typed.name, tapeWidthMm: Number(typed.tapeWidthMm), lengthMm: parseMm(typed.lengthMm) }
+      : { kind, name: typed.name, widthMm: parseMm(typed.widthMm), heightMm: parseMm(typed.heightMm) }
+  const checked = normaliseLabelSize(input)
   const errorsFor = (field: LabelSizeField): string[] =>
     !checked.ok && tried ? checked.errors.filter((error) => error.field === field).map((error) => error.message) : []
 
@@ -389,8 +396,7 @@ function LabelSizesPanel({
   async function add(): Promise<void> {
     setTried(true)
     if (!checked.ok) return
-    const size = checked.size
-    if (await run(() => window.api.addLabelSize(size))) {
+    if (await run(() => window.api.addLabelSize(input))) {
       setTyped(NO_NEW_SIZE)
       setTried(false)
     }
@@ -404,7 +410,7 @@ function LabelSizesPanel({
   return (
     <section className="panel settings" aria-label="Label Sizes">
       <h2>Label Sizes</h2>
-      <p className="settings__intro">Label rolls, shared by every PC. The Small Label is built in.</p>
+      <p className="settings__intro">Label rolls and tape, shared by every PC. The Small Label is built in.</p>
       {message && <p className="message message--error">{message}</p>}
       <ul className="label-sizes">
         {sizes.map((size) => (
@@ -424,10 +430,26 @@ function LabelSizesPanel({
       </ul>
       <fieldset className="field-group">
         <legend>Add a label size</legend>
+        <div className="field" role="radiogroup" aria-label="Kind">
+          <span className="field__label">Kind</span>
+          <div className="field__input">
+            {(['label', 'tape'] as const).map((each) => (
+              <label key={each}>
+                <input type="radio" name="newSizeKind" checked={kind === each} onChange={() => setKind(each)} /> {each === 'label' ? 'Label' : 'Tape'}
+              </label>
+            ))}
+          </div>
+        </div>
         <div className="field">
           <label htmlFor="newSizeName">Name</label>
           <div className="field__input">
-            <input id="newSizeName" value={typed.name} autoComplete="off" onChange={(event) => change('name', event.target.value)} />
+            <input
+              id="newSizeName"
+              value={typed.name}
+              autoComplete="off"
+              placeholder={kind === 'tape' && checked.ok ? tapeSizeName(checked.size.heightMm, checked.size.widthMm) : undefined}
+              onChange={(event) => change('name', event.target.value)}
+            />
           </div>
           <div className="field__messages" aria-live="polite">
             {errorsFor('name').map((text) => (
@@ -437,10 +459,28 @@ function LabelSizesPanel({
             ))}
           </div>
         </div>
-        <div className="field-row">
-          <NumberInput field="widthMm" id="newSizeWidth" label="Width" unit="mm" value={typed.widthMm} errors={errorsFor('widthMm')} onChange={change} onBlur={() => undefined} />
-          <NumberInput field="heightMm" id="newSizeHeight" label="Height" unit="mm" value={typed.heightMm} errors={errorsFor('heightMm')} onChange={change} onBlur={() => undefined} />
-        </div>
+        {kind === 'tape' ? (
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor="newTapeWidth">Tape width</label>
+              <div className="field__input">
+                <select id="newTapeWidth" value={typed.tapeWidthMm} onChange={(event) => change('tapeWidthMm', event.target.value)}>
+                  {TAPE_WIDTHS_MM.map((width) => (
+                    <option key={width} value={String(width)}>
+                      {width} mm
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <NumberInput field="lengthMm" id="newTapeLength" label="Length" unit="mm" value={typed.lengthMm} errors={errorsFor('lengthMm')} onChange={change} onBlur={() => undefined} />
+          </div>
+        ) : (
+          <div className="field-row">
+            <NumberInput field="widthMm" id="newSizeWidth" label="Width" unit="mm" value={typed.widthMm} errors={errorsFor('widthMm')} onChange={change} onBlur={() => undefined} />
+            <NumberInput field="heightMm" id="newSizeHeight" label="Height" unit="mm" value={typed.heightMm} errors={errorsFor('heightMm')} onChange={change} onBlur={() => undefined} />
+          </div>
+        )}
       </fieldset>
       <div className="actions">
         <button type="button" className="button button--secondary" disabled={busy} onClick={() => void add()}>

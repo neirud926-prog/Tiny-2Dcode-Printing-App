@@ -3,7 +3,7 @@ import { LAYOUT_1, LAYOUT_2, type Template, type TemplateText } from '../core/te
 import { templatePreviewSvg, templateProblems, textMaxLength } from './customLabel'
 import { SMALL_LABEL, type LabelSizeEntry } from './printSettings'
 
-const SHELF: LabelSizeEntry = { id: 'shelf', name: 'Shelf', widthMm: 50, heightMm: 30 }
+const SHELF: LabelSizeEntry = { id: 'shelf', name: 'Shelf', kind: 'label', widthMm: 50, heightMm: 30 }
 
 /** A Template made in the designer on the Shelf size: code on the left, two lines to its right, all on the 0.5 mm grid. */
 const DESIGNED: Template = {

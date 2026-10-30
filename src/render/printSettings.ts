@@ -9,6 +9,7 @@
 
 import { DOT_MM } from './dataMatrix'
 import { DEFAULT_LABEL_SIZE, type LabelSize } from './labelSvg'
+import { isTapeWidthMm, TAPE_WIDTHS_MM, tapeSizeName } from './tapeSize'
 
 /** What the print job needs from the settings. */
 export interface PrintSettings {
@@ -19,7 +20,12 @@ export interface PrintSettings {
   readonly offsetXmm: number
   /** Moves the print down (positive) or up, in mm; always whole printer dots. */
   readonly offsetYmm: number
+  /** The label is on tape: the job uses the driver's paper and turns the label to run along the tape. */
+  readonly onTape?: boolean
 }
+
+/** A die-cut label, or continuous tape (a Tape Size). */
+export type LabelSizeKind = 'label' | 'tape'
 
 /**
  * A Label Size: a named label roll in the list shared by every PC. The Small Label is built in,
@@ -28,9 +34,14 @@ export interface PrintSettings {
 export interface LabelSizeEntry extends LabelSize {
   readonly id: string
   readonly name: string
+  /**
+   * For a Tape Size the label is laid out as it reads along the tape: `widthMm` is the label length
+   * and `heightMm` the tape width (one of `TAPE_WIDTHS_MM`).
+   */
+  readonly kind: LabelSizeKind
 }
 
-export const SMALL_LABEL: LabelSizeEntry = { id: 'small-label', name: 'Small Label', ...DEFAULT_LABEL_SIZE }
+export const SMALL_LABEL: LabelSizeEntry = { id: 'small-label', name: 'Small Label', kind: 'label', ...DEFAULT_LABEL_SIZE }
 
 export const LABEL_SIZE_LIMITS_MM = { min: 10, max: 150 } as const
 export const MAX_LABEL_SIZE_NAME_LENGTH = 40
@@ -68,12 +79,13 @@ export function offsetsFor(settings: Pick<PcSettings, 'offsets'>, labelSizeId: s
 
 /** What a print job on `size` needs from this PC's settings. */
 export function printSettingsFor(settings: PcSettings, size: LabelSizeEntry): PrintSettings {
-  return { printerName: settings.printerName, labelSize: { widthMm: size.widthMm, heightMm: size.heightMm }, ...offsetsFor(settings, size.id) }
+  const labelSize = { widthMm: size.widthMm, heightMm: size.heightMm }
+  return { printerName: settings.printerName, labelSize, ...offsetsFor(settings, size.id), ...(size.kind === 'tape' ? { onTape: true } : {}) }
 }
 
-/** e.g. `34.4 × 25 mm`. */
-export function formatLabelSizeMm(size: LabelSize): string {
-  return `${size.widthMm} × ${size.heightMm} mm`
+/** e.g. `34.4 × 25 mm`, or `24 mm tape × 40 mm` for a Tape Size. */
+export function formatLabelSizeMm(size: LabelSize & { readonly kind?: LabelSizeKind }): string {
+  return size.kind === 'tape' ? tapeSizeName(size.heightMm, size.widthMm) : `${size.widthMm} × ${size.heightMm} mm`
 }
 
 export type PcSettingsField = 'printerName' | 'labelSizeId' | 'offsetXmm' | 'offsetYmm' | 'logFolder'
@@ -85,17 +97,22 @@ export interface PcSettingsMessage {
 
 export type NormalisePcSettingsResult = { ok: true; settings: PcSettings } | { ok: false; errors: PcSettingsMessage[] }
 
-export type LabelSizeField = 'name' | 'widthMm' | 'heightMm'
+export type LabelSizeField = 'name' | 'widthMm' | 'heightMm' | 'tapeWidthMm' | 'lengthMm'
 
 export type NormaliseLabelSizeResult =
   | { ok: true; size: Omit<LabelSizeEntry, 'id'> }
   | { ok: false; errors: { readonly field: LabelSizeField; readonly message: string }[] }
 
-/** Checks a Label Size to add: name trimmed (1–40 characters), width and height within the limits, rounded to 0.01 mm. */
+/**
+ * Checks a Label Size to add: name trimmed (1–40 characters), width and height within the limits,
+ * rounded to 0.01 mm. A Tape Size (`kind: 'tape'`) gives a tape width, one of `TAPE_WIDTHS_MM`, and a
+ * length within the limits; a blank name becomes "<w> mm tape × <l> mm".
+ */
 export function normaliseLabelSize(input: unknown): NormaliseLabelSizeResult {
   const record = isRecord(input) ? input : {}
   const errors: { field: LabelSizeField; message: string }[] = []
   const name = typeof record.name === 'string' ? record.name.trim() : ''
+  if (record.kind === 'tape') return normaliseTapeSize(record, name)
   if (name === '') errors.push({ field: 'name', message: 'Enter a name for the label size.' })
   else if (name.length > MAX_LABEL_SIZE_NAME_LENGTH) errors.push({ field: 'name', message: `The name must be at most ${MAX_LABEL_SIZE_NAME_LENGTH} characters.` })
   const widthMm = sizeMm(record.widthMm)
@@ -103,7 +120,19 @@ export function normaliseLabelSize(input: unknown): NormaliseLabelSizeResult {
   const heightMm = sizeMm(record.heightMm)
   if (heightMm === null) errors.push({ field: 'heightMm', message: sizeMessage('Label height') })
   if (errors.length > 0 || widthMm === null || heightMm === null) return { ok: false, errors }
-  return { ok: true, size: { name, widthMm, heightMm } }
+  return { ok: true, size: { name, kind: 'label', widthMm, heightMm } }
+}
+
+function normaliseTapeSize(record: Record<string, unknown>, typedName: string): NormaliseLabelSizeResult {
+  const errors: { field: LabelSizeField; message: string }[] = []
+  const tapeWidthMm = isTapeWidthMm(record.tapeWidthMm) ? record.tapeWidthMm : null
+  const lengthMm = sizeMm(record.lengthMm)
+  const name = typedName === '' && tapeWidthMm !== null && lengthMm !== null ? tapeSizeName(tapeWidthMm, lengthMm) : typedName
+  if (name.length > MAX_LABEL_SIZE_NAME_LENGTH) errors.push({ field: 'name', message: `The name must be at most ${MAX_LABEL_SIZE_NAME_LENGTH} characters.` })
+  if (tapeWidthMm === null) errors.push({ field: 'tapeWidthMm', message: `Tape width must be ${TAPE_WIDTHS_MM.slice(0, -1).join(', ')} or ${TAPE_WIDTHS_MM.at(-1)} mm.` })
+  if (lengthMm === null) errors.push({ field: 'lengthMm', message: sizeMessage('Label length') })
+  if (errors.length > 0 || tapeWidthMm === null || lengthMm === null) return { ok: false, errors }
+  return { ok: true, size: { name, kind: 'tape', widthMm: lengthMm, heightMm: tapeWidthMm } }
 }
 
 /** A label width or height rounded to 0.01 mm, or null if outside the limits. */

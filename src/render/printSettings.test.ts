@@ -98,7 +98,7 @@ describe('normalisePcSettings', () => {
 
 describe('normaliseLabelSize', () => {
   it('trims the name and rounds the size to 0.01 mm', () => {
-    expect(normaliseLabelSize({ name: ' Shelf ', widthMm: 50.004, heightMm: 30 })).toEqual({ ok: true, size: { name: 'Shelf', widthMm: 50, heightMm: 30 } })
+    expect(normaliseLabelSize({ name: ' Shelf ', widthMm: 50.004, heightMm: 30 })).toEqual({ ok: true, size: { name: 'Shelf', kind: 'label', widthMm: 50, heightMm: 30 } })
   })
 
   it(`refuses a size outside ${LABEL_SIZE_LIMITS_MM.min}–${LABEL_SIZE_LIMITS_MM.max} mm and a missing or long name`, () => {
@@ -116,7 +116,7 @@ describe('normaliseLabelSize', () => {
 
 describe('printSettingsFor', () => {
   it('gives a print job the size and that size\'s offsets', () => {
-    const shelf = { id: 'shelf', name: 'Shelf', widthMm: 50, heightMm: 30 }
+    const shelf = { id: 'shelf', name: 'Shelf', kind: 'label', widthMm: 50, heightMm: 30 } as const
     const settings = { ...valid, offsets: { ...valid.offsets, shelf: { offsetXmm: DOT_MM, offsetYmm: 0 } } }
     expect(printSettingsFor(settings, shelf)).toEqual({ printerName: valid.printerName, labelSize: { widthMm: 50, heightMm: 30 }, offsetXmm: DOT_MM, offsetYmm: 0 })
     expect(printSettingsFor(settings, SMALL_LABEL)).toEqual({ printerName: valid.printerName, labelSize: { widthMm: 34.4, heightMm: 25 }, offsetXmm: 0, offsetYmm: 0 })

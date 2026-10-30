@@ -4,7 +4,7 @@ import { DOT_MM } from './dataMatrix'
 import { renderLabelSvg } from './labelSvg'
 import { LAYOUT_1 } from '../core/template'
 import { buildCustomLabel, renderCustomLabelSvg } from './customLabel'
-import { buildCustomLabelPrintJob, buildLabelPrintJob, htmlDataUrl, sampleLabelRequest } from './printJob'
+import { buildCustomLabelPrintJob, buildLabelPrintJob, buildTapeTestPrintJob, htmlDataUrl, sampleLabelRequest } from './printJob'
 import { SMALL_LABEL, type PrintSettings } from './printSettings'
 
 const today = '2026-10-19'
@@ -79,6 +79,57 @@ describe('buildCustomLabelPrintJob', () => {
     expect(html).toContain(renderCustomLabelSvg(built.label))
     expect(html).toContain(`content="default-src 'none'; style-src 'unsafe-inline'"`)
     expect(html).not.toMatch(/<script/i)
+  })
+})
+
+describe('a print job on tape', () => {
+  // 24 mm tape × 40 mm: laid out 40 mm long (x) × 24 mm across the tape (y).
+  const onTape: PrintSettings = { ...settings, labelSize: { widthMm: 40, heightMm: 24 }, onTape: true }
+
+  it("uses the driver's paper: no page size, the rest as for a die-cut label", () => {
+    const { options } = buildLabelPrintJob(labelFor(), onTape)
+    expect(options).toEqual({
+      silent: true,
+      deviceName: 'ZDesigner GX420t',
+      printBackground: true,
+      margins: { marginType: 'none' },
+      landscape: false,
+      pageSize: null,
+      copies: 3,
+      scaleFactor: 100
+    })
+  })
+
+  it('turns the label a quarter turn on a portrait page as wide as the tape, offsets still along the label', () => {
+    const { html } = buildLabelPrintJob(labelFor(), onTape)
+    expect(html).toContain('@page{margin:0}')
+    expect(html).not.toContain('size:')
+    expect(html).toContain('html,body{margin:0;padding:0;width:24mm;height:40mm;')
+    expect(html).toContain(
+      `.label{width:40mm;height:24mm;transform-origin:0 0;transform:translate(24mm,0) rotate(90deg) translate(${(2 * DOT_MM).toFixed(4)}mm,${(-3 * DOT_MM).toFixed(4)}mm)}`
+    )
+  })
+})
+
+describe('buildTapeTestPrintJob', () => {
+  it('prints the outline, the printable band edges and the size name, one copy, on the driver\'s paper', () => {
+    const tape = { id: 't', name: '24 mm tape × 40 mm', kind: 'tape', widthMm: 40, heightMm: 24 } as const
+    const { html, options } = buildTapeTestPrintJob(tape, { ...settings, labelSize: { widthMm: 40, heightMm: 24 }, onTape: true })
+    expect(options).toMatchObject({ pageSize: null, copies: 1 })
+    expect(html).toContain('rotate(90deg)')
+    expect(html).toContain('<rect x="0.1" y="0.1" width="39.8" height="23.8"')
+    // 320 dots at 360 dpi = 22.5778 mm, centred on 24 mm tape.
+    expect(html).toContain('<line x1="0" y1="0.7111" x2="40" y2="0.7111"')
+    expect(html).toContain('<line x1="0" y1="23.2889" x2="40" y2="23.2889"')
+    expect(html).toContain('>24 mm tape × 40 mm</text>')
+  })
+
+  it('keeps the band on 3.5 mm tape: 48 dots', () => {
+    const tape = { id: 't', name: 'Tiny & thin', kind: 'tape', widthMm: 20, heightMm: 3.5 } as const
+    const { html } = buildTapeTestPrintJob(tape, { ...settings, labelSize: { widthMm: 20, heightMm: 3.5 }, onTape: true })
+    expect(html).toContain('y1="0.0567"')
+    expect(html).toContain('y1="3.4433"')
+    expect(html).toContain('>Tiny &amp; thin</text>')
   })
 })
 

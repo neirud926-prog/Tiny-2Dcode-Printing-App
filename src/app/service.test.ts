@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { LabelRequest } from '../core/label'
 import { LAYOUT_1, LAYOUT_2, type Template } from '../core/template'
 import { linesOf, parseCsvLine } from '../data/csvTesting'
+import { writeSealed } from '../data/sealed'
 import { tempFolder } from '../data/testFolder'
 import { DOT_MM } from '../render/dataMatrix'
 import type { CustomLabelRequest } from '../render/customLabel'
@@ -71,6 +72,79 @@ describe('Label Sizes in the app', () => {
     expect((await one.api.savePrinterSettings(settingsFor(shelf))).ok).toBe(true)
     expect(await one.api.deleteLabelSize(shelf)).toEqual({ ok: false, message: 'The label size "Shelf" is loaded in this printer. Change the label in Settings first.' })
     expect(await two.api.deleteLabelSize(shelf)).toEqual({ ok: true, sizes: [SMALL_LABEL] })
+  })
+})
+
+describe('Tape Sizes in the app', () => {
+  it('are added by tape width and length, named "<w> mm tape × <l> mm" unless renamed, and laid out length × tape width', async () => {
+    const { api } = await pc(await tempFolder(), 'PHARM-01')
+    const added = await api.addLabelSize({ kind: 'tape', name: '', tapeWidthMm: 24, lengthMm: 40 })
+    expect(added).toMatchObject({ ok: true })
+    const renamed = await api.addLabelSize({ kind: 'tape', name: 'Bin tape', tapeWidthMm: 3.5, lengthMm: 150 })
+    const listed = renamed.ok ? renamed.sizes : []
+    expect(listed.map(({ id: _id, ...size }) => size)).toEqual([
+      { name: 'Small Label', kind: 'label', widthMm: 34.4, heightMm: 25 },
+      { name: '24 mm tape × 40 mm', kind: 'tape', widthMm: 40, heightMm: 24 },
+      { name: 'Bin tape', kind: 'tape', widthMm: 150, heightMm: 3.5 }
+    ])
+    expect(await api.deleteLabelSize(listed[1].id)).toMatchObject({ ok: true, sizes: [SMALL_LABEL, listed[2]] })
+  })
+
+  it('take only the seven tape widths, a length of 10–150 mm and a name of at most 40 characters', async () => {
+    const { api } = await pc(await tempFolder(), 'PHARM-01')
+    expect(await api.addLabelSize({ kind: 'tape', name: '', tapeWidthMm: 25, lengthMm: 9 })).toEqual({
+      ok: false,
+      message: 'Tape width must be 3.5, 6, 9, 12, 18, 24 or 36 mm. Label length must be from 10 to 150 mm.'
+    })
+    expect(await api.addLabelSize({ kind: 'tape', name: 'x'.repeat(41), tapeWidthMm: 12, lengthMm: 151 })).toEqual({
+      ok: false,
+      message: 'The name must be at most 40 characters. Label length must be from 10 to 150 mm.'
+    })
+  })
+
+  it('can be the loaded size, with its own offsets, and Test print shows its outline, band edges and name on the driver\'s paper', async () => {
+    const folder = await tempFolder()
+    const { api, jobs } = await pc(folder, 'PHARM-01')
+    const added = await api.addLabelSize({ kind: 'tape', name: '', tapeWidthMm: 24, lengthMm: 40 })
+    const tape = added.ok ? added.sizes[1].id : ''
+    const offsets = { [SMALL_LABEL.id]: { offsetXmm: 2 * DOT_MM, offsetYmm: 0 }, [tape]: { offsetXmm: 0, offsetYmm: -3 * DOT_MM } }
+    expect(await api.savePrinterSettings(settingsFor(tape, offsets))).toMatchObject({ ok: true })
+    const startup = await (await pc(folder, 'PHARM-01')).api.getStartup()
+    expect(startup.status === 'ready' && startup.settings).toEqual(settingsFor(tape, offsets))
+
+    expect(await api.testPrint(settingsFor(tape, offsets))).toMatchObject({ ok: true })
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0].options).toMatchObject({ deviceName: printer, pageSize: null, copies: 1 })
+    expect(jobs[0].html).toContain(`rotate(90deg) translate(0.0000mm,${(-3 * DOT_MM).toFixed(4)}mm)`)
+    expect(jobs[0].html).toContain('>24 mm tape × 40 mm</text>')
+    expect(jobs[0].html).toContain('<line x1="0" y1="0.7111" x2="40" y2="0.7111"')
+    expect(jobs[0].html).not.toContain('TEST01')
+  })
+
+  it('print Custom Labels from a Template made for them on the driver\'s paper, while die-cut sizes keep their page size', async () => {
+    const { api, jobs } = await pc(await tempFolder(), 'PHARM-01')
+    const added = await api.addLabelSize({ kind: 'tape', name: 'Bins', tapeWidthMm: 24, lengthMm: 50 })
+    const tape = added.ok ? added.sizes[1].id : ''
+    // The Shelf bin design moved up to fit 24 mm tape.
+    const design = { ...SHELF_BIN, labelSizeId: tape, code: { ...SHELF_BIN.code, yMm: 12 }, texts: SHELF_BIN.texts.map((text) => ({ ...text, yMm: text.yMm - 2 })) }
+    const saved = await api.saveTemplate(design)
+    if (!saved.ok) throw new Error(saved.message)
+    expect((await api.savePrinterSettings(settingsFor(tape))).ok).toBe(true)
+    expect(await api.printCustomLabel({ templateId: saved.template!.id, symbology: 'datamatrix', codeValue: 'BIN-4', texts: ['top'], copies: 2 })).toMatchObject({ ok: true })
+    expect(jobs[0].options).toMatchObject({ pageSize: null, copies: 2 })
+    expect(jobs[0].html).toContain('html,body{margin:0;padding:0;width:24mm;height:50mm;')
+
+    expect((await api.savePrinterSettings(settingsFor(SMALL_LABEL.id))).ok).toBe(true)
+    expect(await api.testPrint(settingsFor(SMALL_LABEL.id))).toMatchObject({ ok: true })
+    expect(jobs[1].options).toMatchObject({ pageSize: { width: 34_400, height: 25_000 } })
+    expect(jobs[1].html).toContain('TEST01')
+  })
+
+  it('read stored sizes without a kind as die-cut Labels', async () => {
+    const folder = await tempFolder()
+    await writeSealed(join(folder, 'labelsizes.dat'), [{ id: 'shelf', name: 'Shelf', widthMm: 50, heightMm: 30 }])
+    const { api } = await pc(folder, 'PHARM-01')
+    expect(await api.listLabelSizes()).toEqual({ ok: true, sizes: [SMALL_LABEL, { id: 'shelf', name: 'Shelf', kind: 'label', widthMm: 50, heightMm: 30 }] })
   })
 })
 
