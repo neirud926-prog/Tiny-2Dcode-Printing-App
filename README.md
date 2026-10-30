@@ -13,7 +13,7 @@ npm run build         # typecheck and build the webview to out-tauri/ (works on 
 npm run tauri:dev     # start the app with hot reload (Windows; needs the WebView2 Runtime)
 npm run tauri:build   # typecheck, build the webview, then src-tauri/target/release/tiny-2dcode.exe (no installer)
 cd src-tauri && cargo check --target x86_64-pc-windows-msvc   # compile-check the Rust side from any OS
-cd src-tauri && cargo test   # the path-scope and error-code tests (on Windows; elsewhere: rustc --edition 2021 --test src/scope.rs)
+cd src-tauri && cargo test   # the path-scope, error-code and driver-paper tests (on Windows; elsewhere: rustc --edition 2021 --test src/scope.rs, and src/paper.rs)
 ```
 
 CI (`.github/workflows/ci.yml`) runs the tests on every push and pull request, then builds the Windows `.exe` as `2DCodePrint-<version>.exe` and keeps it as a workflow artifact for 14 days.

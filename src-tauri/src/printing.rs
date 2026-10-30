@@ -32,8 +32,22 @@ pub struct PageSizeMicrons {
     pub height: u32,
 }
 
+/// `DriverPaper` in `src/app/host.ts`: a printer driver's default paper in mm.
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DriverPaper {
+    pub width_mm: f64,
+    pub length_mm: Option<f64>,
+}
+
 #[cfg(not(windows))]
 const NEEDS_WINDOWS: &str = "Printing needs Windows.";
+
+/// Off Windows no driver can be asked.
+#[cfg(not(windows))]
+pub fn default_paper(_printer_name: &str) -> Option<DriverPaper> {
+    None
+}
 
 #[cfg(not(windows))]
 pub fn list_printers() -> Result<Vec<PrinterChoice>, String> {
@@ -90,6 +104,85 @@ pub fn list_printers() -> Result<Vec<PrinterChoice>, String> {
             })
         })
         .collect()
+}
+
+/// The default paper in the driver's Printing preferences for `printer_name` (its default DEVMODE),
+/// or None if the driver cannot be asked or reports no width (`paper::paper_mm`).
+#[cfg(windows)]
+pub fn default_paper(printer_name: &str) -> Option<DriverPaper> {
+    use crate::paper::{paper_mm, DevmodePaper};
+    use windows::core::{HSTRING, PCWSTR, PWSTR};
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::{DEVMODEW, DM_OUT_BUFFER};
+    use windows::Win32::Graphics::Printing::{
+        ClosePrinter, DocumentPropertiesW, OpenPrinterW, PRINTER_HANDLE,
+    };
+    use windows::Win32::Storage::Xps::{DeviceCapabilitiesW, DC_PAPERS, DC_PAPERSIZE};
+
+    let name = HSTRING::from(printer_name);
+    let mut printer = PRINTER_HANDLE::default();
+    unsafe { OpenPrinterW(&name, &mut printer, None) }.ok()?;
+    let devmode = (|| {
+        // The first call only asks for the DEVMODE's size, driver data included.
+        let size = unsafe { DocumentPropertiesW(None, printer, &name, None, None, 0) };
+        if size <= 0 {
+            return None;
+        }
+        // u64 cells keep the DEVMODEW aligned.
+        let mut buffer = vec![0u64; (size as usize).div_ceil(8)];
+        let devmode = buffer.as_mut_ptr().cast::<DEVMODEW>();
+        let filled = unsafe {
+            DocumentPropertiesW(None, printer, &name, Some(devmode), None, DM_OUT_BUFFER.0)
+        };
+        if filled < 0 {
+            return None;
+        }
+        let devmode = unsafe { &*devmode };
+        let paper = unsafe { devmode.Anonymous1.Anonymous1 };
+        Some(DevmodePaper {
+            fields: devmode.dmFields.0,
+            paper_size: paper.dmPaperSize,
+            paper_length: paper.dmPaperLength,
+            paper_width: paper.dmPaperWidth,
+        })
+    })();
+    let _ = unsafe { ClosePrinter(printer) };
+    let devmode = devmode?;
+
+    // The driver's named papers and their sizes, for a DEVMODE that names its paper only by id.
+    let count = unsafe { DeviceCapabilitiesW(&name, PCWSTR::null(), DC_PAPERS, None, None) };
+    let (mut papers, mut sizes) = (Vec::new(), Vec::new());
+    if count > 0 {
+        papers = vec![0u16; count as usize];
+        let mut points = vec![POINT::default(); count as usize];
+        let got_papers = unsafe {
+            DeviceCapabilitiesW(
+                &name,
+                PCWSTR::null(),
+                DC_PAPERS,
+                Some(PWSTR(papers.as_mut_ptr())),
+                None,
+            )
+        };
+        let got_sizes = unsafe {
+            DeviceCapabilitiesW(
+                &name,
+                PCWSTR::null(),
+                DC_PAPERSIZE,
+                Some(PWSTR(points.as_mut_ptr().cast())),
+                None,
+            )
+        };
+        if got_papers == count && got_sizes == count {
+            sizes = points.iter().map(|point| (point.x, point.y)).collect();
+        } else {
+            papers.clear();
+        }
+    }
+    paper_mm(&devmode, &papers, &sizes).map(|(width_mm, length_mm)| DriverPaper {
+        width_mm,
+        length_mm,
+    })
 }
 
 /// Prints the label page silently: a hidden window that runs no scripts is given the page by
@@ -326,6 +419,18 @@ mod tests {
         .unwrap();
         assert!(job.options.page_size.is_none());
         assert_eq!(job.options.device_name, "Brother PT-P900W");
+    }
+
+    #[test]
+    fn the_drivers_paper_goes_to_the_web_side_in_mm() {
+        let paper = DriverPaper {
+            width_mm: 23.9,
+            length_mm: None,
+        };
+        assert_eq!(
+            serde_json::to_string(&paper).unwrap(),
+            r#"{"widthMm":23.9,"lengthMm":null}"#
+        );
     }
 
     #[test]

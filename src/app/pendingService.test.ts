@@ -32,6 +32,7 @@ async function setup(driver: DriverResult = { ok: true }) {
   const jobs: LabelPrintJob[] = []
   const deps: PrintServiceDeps = {
     now: () => now,
+    readDefaultPaper: async () => null,
     sendToPrinter: async (job) => {
       jobs.push(job)
       return driver

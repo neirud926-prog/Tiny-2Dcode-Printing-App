@@ -1,6 +1,6 @@
 /** The host in the Tauri app: Rust commands for who and where this PC is, the dialog and printing. */
 import { invoke } from '@tauri-apps/api/core'
-import type { AppHost } from '../app/host'
+import type { AppHost, DriverPaper } from '../app/host'
 import { pcNameFromHostname } from '../data/pcSettings'
 import type { PrinterChoice } from '../preload/api'
 
@@ -19,6 +19,8 @@ export async function createTauriHost(): Promise<AppHost> {
     windowsUser: info.windowsUser,
     chooseFile: (options) => invoke<string | null>('choose_file', { options }),
     listPrinters: () => invoke<PrinterChoice[]>('list_printers'),
+    /** `default_paper` in `src-tauri/src/printing.rs`; null off Windows or when the driver says nothing. */
+    readDefaultPaper: (printerName) => invoke<DriverPaper | null>('default_paper', { printerName }),
     async sendToPrinter(job) {
       try {
         await invoke('print_label', { job })

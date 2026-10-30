@@ -13,13 +13,17 @@ import type { CustomLabelRequest } from '../render/customLabel'
 import type { LabelPrintJob } from '../render/printJob'
 import { SMALL_LABEL, type PcSettings } from '../render/printSettings'
 import type { PreloadApi } from '../preload/api'
+import type { DriverPaper } from './host'
 import { createAppService } from './service'
 
 const printer = 'ZDesigner GX420t'
 const request: LabelRequest = { itemCode: 'PARA01', packVolumeDigit: 0, expiry: '31122099', lot: 'A1', copies: 1 }
 
-/** The app on one PC over a shared data folder, with a fake printer that records each job. */
-async function pc(dataFolder: string, pcName: string): Promise<{ api: PreloadApi; jobs: LabelPrintJob[] }> {
+/**
+ * The app on one PC over a shared data folder, with a fake printer that records each job; its
+ * driver's default paper is `paper` (24 mm tape unless given).
+ */
+async function pc(dataFolder: string, pcName: string, paper: DriverPaper | null = { widthMm: 24, lengthMm: null }): Promise<{ api: PreloadApi; jobs: LabelPrintJob[] }> {
   const jobs: LabelPrintJob[] = []
   const api = createAppService({
     dataFolder,
@@ -27,6 +31,7 @@ async function pc(dataFolder: string, pcName: string): Promise<{ api: PreloadApi
     windowsUser: 'chantm',
     chooseFile: async () => null,
     listPrinters: async () => [{ name: printer, displayName: printer }],
+    readDefaultPaper: async () => paper,
     sendToPrinter: async (job) => {
       jobs.push(job)
       return { ok: true }
@@ -140,6 +145,23 @@ describe('Tape Sizes in the app', () => {
     expect(await api.testPrint(settingsFor(SMALL_LABEL.id))).toMatchObject({ ok: true })
     expect(jobs[1].options).toMatchObject({ pageSize: { width: 34_400, height: 25_000 } })
     expect(jobs[1].html).toContain('TEST01')
+  })
+
+  it("refuse a Custom Label when the driver is set to another tape, and warn when it reports none", async () => {
+    for (const [paper, outcome] of [
+      [{ widthMm: 36, lengthMm: null }, { ok: false, message: 'Not printed: The printer is set to 36 mm tape; set 24 mm in its Printing preferences.' }],
+      [null, { ok: true, message: `Printed 1 label on ${printer}.`, warning: 'Could not check the tape width; check the printer is set to 24 mm tape.' }]
+    ] as const) {
+      const { api, jobs } = await pc(await tempFolder(), 'PHARM-01', paper)
+      const added = await api.addLabelSize({ kind: 'tape', name: 'Bins', tapeWidthMm: 24, lengthMm: 50 })
+      const tape = added.ok ? added.sizes[1].id : ''
+      const design = { ...SHELF_BIN, labelSizeId: tape, code: { ...SHELF_BIN.code, yMm: 12 }, texts: SHELF_BIN.texts.map((text) => ({ ...text, yMm: text.yMm - 2 })) }
+      const saved = await api.saveTemplate(design)
+      if (!saved.ok) throw new Error(saved.message)
+      expect((await api.savePrinterSettings(settingsFor(tape))).ok).toBe(true)
+      expect(await api.printCustomLabel({ templateId: saved.template!.id, symbology: 'datamatrix', codeValue: 'BIN-4', texts: ['top'], copies: 1 })).toEqual(outcome)
+      expect(jobs).toHaveLength(outcome.ok ? 1 : 0)
+    }
   })
 
   it('read stored sizes without a kind as die-cut Labels', async () => {

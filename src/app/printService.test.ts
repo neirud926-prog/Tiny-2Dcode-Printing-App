@@ -8,6 +8,7 @@ import { tempFolder } from '../data/testFolder'
 import { DOT_MM } from '../render/dataMatrix'
 import type { LabelPrintJob } from '../render/printJob'
 import { SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
+import type { DriverPaper } from './host'
 import { printLabelRequest, printTestLabel, printerProblem, type DriverResult, type PrintServiceDeps } from './printService'
 
 const request: LabelRequest = { itemCode: 'para18', packVolumeDigit: 2, expiry: '31122027', lot: '2512172-1', copies: 3 }
@@ -37,12 +38,25 @@ const itemList = indexItems([
 /** 19 Oct 2026 14:03:07 local time. */
 const now = new Date(2026, 9, 19, 14, 3, 7)
 
-/** A print service over a temp data folder, with a fake printer that records each job. */
-async function setup(driver: DriverResult | Error = { ok: true }) {
+/** A Tape Size: 24 mm tape, 40 mm long. */
+const tapeSize: LabelSizeEntry = { id: 'bins', name: '24 mm tape × 40 mm', kind: 'tape', widthMm: 40, heightMm: 24 }
+const tapeSettings: PcSettings = { printerName: 'Brother PT-P900W', printerResolution: 360, labelSizeId: tapeSize.id, offsets: {}, logFolder: null }
+
+/**
+ * A print service over a temp data folder, with a fake printer that records each job and reports
+ * `paper` as its driver's default paper.
+ */
+async function setup(driver: DriverResult | Error = { ok: true }, paper: DriverPaper | null | Error = null) {
   const dataFolder = await tempFolder()
   const jobs: LabelPrintJob[] = []
+  const paperReads: string[] = []
   const deps: PrintServiceDeps = {
     now: () => now,
+    readDefaultPaper: async (printerName) => {
+      paperReads.push(printerName)
+      if (paper instanceof Error) throw paper
+      return paper
+    },
     sendToPrinter: async (job) => {
       jobs.push(job)
       if (driver instanceof Error) throw driver
@@ -52,7 +66,7 @@ async function setup(driver: DriverResult | Error = { ok: true }) {
   }
   const context = { dataFolder, pcName: 'PHARM-01', windowsUser: 'chantm' }
   const logFile = join(dataFolder, 'logs', 'print-log-2026-10-PHARM-01.csv')
-  return { dataFolder, jobs, deps, context, logFile }
+  return { dataFolder, jobs, paperReads, deps, context, logFile }
 }
 
 describe('printLabelRequest', () => {
@@ -217,6 +231,62 @@ describe('printTestLabel', () => {
   it("reports the driver's reason", async () => {
     const { deps } = await setup({ ok: false, reason: 'Invalid printer settings' })
     expect(await printTestLabel(testSettings, testSize, deps)).toEqual({ ok: false, message: 'Test print failed: the printer reported "Invalid printer settings".' })
+  })
+})
+
+describe('the driver tape check before a Tape Size prints', () => {
+  it("prints when the driver's default paper is the tape width and length, within a tenth of a mm", async () => {
+    const { jobs, paperReads, deps } = await setup({ ok: true }, { widthMm: 23.9, lengthMm: 40.1 })
+    expect(await printTestLabel(tapeSettings, tapeSize, deps)).toEqual({
+      ok: true,
+      message: 'Test label sent to Brother PT-P900W. If it is not centred on the label, adjust the offsets.',
+      warning: null
+    })
+    expect(paperReads).toEqual(['Brother PT-P900W'])
+    expect(jobs).toHaveLength(1)
+  })
+
+  it('prints when the driver reports the width but no length', async () => {
+    const { jobs, deps } = await setup({ ok: true }, { widthMm: 24, lengthMm: null })
+    expect(await printTestLabel(tapeSettings, tapeSize, deps)).toMatchObject({ ok: true, warning: null })
+    expect(jobs).toHaveLength(1)
+  })
+
+  it('refuses another tape width, naming both and Printing preferences, and sends nothing', async () => {
+    const { jobs, deps } = await setup({ ok: true }, { widthMm: 36, lengthMm: null })
+    expect(await printTestLabel(tapeSettings, tapeSize, deps)).toEqual({
+      ok: false,
+      message: 'Test print failed: The printer is set to 36 mm tape; set 24 mm in its Printing preferences.'
+    })
+    expect(jobs).toHaveLength(0)
+  })
+
+  it('refuses another length when the driver reports one', async () => {
+    const { jobs, deps } = await setup({ ok: true }, { widthMm: 24, lengthMm: 100 })
+    expect(await printTestLabel(tapeSettings, tapeSize, deps)).toEqual({
+      ok: false,
+      message: 'Test print failed: The printer is set to 24 mm tape, 100 mm long; set 24 mm tape, 40 mm long in its Printing preferences.'
+    })
+    expect(jobs).toHaveLength(0)
+  })
+
+  it('prints with a warning when the driver reports nothing usable', async () => {
+    for (const paper of [null, new Error('OpenPrinter failed')]) {
+      const { jobs, deps } = await setup({ ok: true }, paper)
+      expect(await printTestLabel(tapeSettings, tapeSize, deps)).toMatchObject({
+        ok: true,
+        warning: 'Could not check the tape width; check the printer is set to 24 mm tape.'
+      })
+      expect(jobs).toHaveLength(1)
+    }
+  })
+
+  it('does not check die-cut Label Sizes', async () => {
+    const { jobs, paperReads, deps } = await setup({ ok: true }, { widthMm: 36, lengthMm: null })
+    expect(await printTestLabel(testSettings, testSize, deps)).toMatchObject({ ok: true, warning: null })
+    expect(await printLabelRequest(request, settings, itemList, (await setup()).context, deps)).toMatchObject({ ok: true })
+    expect(paperReads).toEqual([])
+    expect(jobs).toHaveLength(2)
   })
 })
 

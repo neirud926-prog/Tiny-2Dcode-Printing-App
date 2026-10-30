@@ -17,15 +17,17 @@ import type { Template } from '../core/template'
 import { customPrintLogEntryFor, printLogEntryFor, type PrintLogEntry } from '../data/printLog'
 import { buildCustomLabel, templateSizeProblem, type CustomLabelRequest } from '../render/customLabel'
 import { buildCustomLabelPrintJob, buildLabelPrintJob, buildTapeTestPrintJob, sampleLabelRequest, type LabelPrintJob } from '../render/printJob'
-import { printSettingsFor, SMALL_LABEL, type LabelSizeEntry, type PcSettings } from '../render/printSettings'
+import { printSettingsFor, SMALL_LABEL, type LabelSizeEntry, type PcSettings, type PrintSettings } from '../render/printSettings'
 import type { PrinterChoice, PrintOutcome } from '../preload/api'
 
-import type { DriverResult } from './host'
+import type { DriverPaper, DriverResult } from './host'
 
 export type { DriverResult }
 
 export interface PrintServiceDeps {
   now(): Date
+  /** The printer driver's default paper, or null if it cannot be read (ADR 0004). */
+  readDefaultPaper(printerName: string): Promise<DriverPaper | null>
   /** Prints the job silently; resolves with the driver's result. */
   sendToPrinter(job: LabelPrintJob): Promise<DriverResult>
   appendLog(logFolder: string, entry: PrintLogEntry): Promise<unknown>
@@ -68,20 +70,28 @@ export async function printLabelRequest(
   const problems = itemListProblems(lookupItem(itemList, label.label.itemCode), label.label)
   if (problems.length > 0) return refused(problems.map((problem) => problem.message).join(' '))
 
-  const sent = await send(buildLabelPrintJob(label.label, printSettingsFor(settings, SMALL_LABEL)), deps)
+  const printSettings = printSettingsFor(settings, SMALL_LABEL)
+  const sent = await send(buildLabelPrintJob(label.label, printSettings), printSettings, deps)
   if (!sent.ok) return refused(sent.message)
-  return logged(printLogEntryFor(label.label, { ...context, at }), settings, context, deps)
+  return logged(printLogEntryFor(label.label, { ...context, at }), settings, context, deps, sent.warning)
 }
 
-/** After a print: adds its print log line and says what printed. */
-async function logged(entry: PrintLogEntry, settings: PcSettings, context: PrintContext, deps: PrintServiceDeps): Promise<PrintOutcome> {
+/** After a print: adds its print log line and says what printed, with `warning` from the print. */
+async function logged(
+  entry: PrintLogEntry,
+  settings: PcSettings,
+  context: PrintContext,
+  deps: PrintServiceDeps,
+  warning: string | null
+): Promise<PrintOutcome> {
   const { copies } = entry
   const message = `Printed ${copies} label${copies === 1 ? '' : 's'} on ${settings.printerName}.`
   try {
     await deps.appendLog(resolveLogFolder(context.dataFolder, settings), entry)
-    return { ok: true, message, warning: null }
+    return { ok: true, message, warning }
   } catch (error) {
-    return { ok: true, message, warning: `The print log could not be written: ${errorText(error)}` }
+    const logWarning = `The print log could not be written: ${errorText(error)}`
+    return { ok: true, message, warning: warning ? `${warning} ${logWarning}` : logWarning }
   }
 }
 
@@ -111,9 +121,10 @@ export async function printCustomLabelRequest(
   const built = buildCustomLabel(template, size, request, settings.printerResolution)
   if (!built.ok) return refused(built.errors.map((error) => error.message).join(' '))
 
-  const sent = await send(buildCustomLabelPrintJob(built.label, printSettingsFor(settings, size)), deps)
+  const printSettings = printSettingsFor(settings, size)
+  const sent = await send(buildCustomLabelPrintJob(built.label, printSettings), printSettings, deps)
   if (!sent.ok) return refused(sent.message)
-  return logged(customPrintLogEntryFor(built.label, { ...context, at }), settings, context, deps)
+  return logged(customPrintLogEntryFor(built.label, { ...context, at }), settings, context, deps, sent.warning)
 }
 
 /**
@@ -125,7 +136,7 @@ export async function printCustomLabelRequest(
 export async function printTestLabel(
   settings: PcSettings,
   size: LabelSizeEntry,
-  deps: Pick<PrintServiceDeps, 'now' | 'sendToPrinter'>
+  deps: Pick<PrintServiceDeps, 'now' | 'readDefaultPaper' | 'sendToPrinter'>
 ): Promise<PrintOutcome> {
   const printSettings = printSettingsFor(settings, size)
   let job: LabelPrintJob
@@ -136,12 +147,12 @@ export async function printTestLabel(
     if (!label.ok) return { ok: false, message: `Test print failed: ${label.message}` }
     job = buildLabelPrintJob(label.label, printSettings)
   }
-  const sent = await send(job, deps)
+  const sent = await send(job, printSettings, deps)
   if (!sent.ok) return { ok: false, message: `Test print failed: ${sent.message}` }
   return {
     ok: true,
     message: `Test label sent to ${settings.printerName}. If it is not centred on the label, adjust the offsets.`,
-    warning: null
+    warning: sent.warning
   }
 }
 
@@ -165,14 +176,64 @@ function checkedLabel(request: LabelRequest, today: string): { ok: true; label: 
   return { ok: true, label: built.label }
 }
 
-async function send(job: LabelPrintJob, deps: Pick<PrintServiceDeps, 'sendToPrinter'>): Promise<{ ok: true } | { ok: false; message: string }> {
+/**
+ * Sends `job`, printed with `settings`, to the printer; every print goes through here. On a Tape Size
+ * the driver's default paper is checked first (ADR 0004): a known mismatch is refused and nothing is
+ * sent; when the driver reports nothing the job prints with a warning.
+ */
+async function send(
+  job: LabelPrintJob,
+  settings: PrintSettings,
+  deps: Pick<PrintServiceDeps, 'readDefaultPaper' | 'sendToPrinter'>
+): Promise<{ ok: true; warning: string | null } | { ok: false; message: string }> {
+  let warning: string | null = null
+  if (settings.onTape) {
+    const tape = await tapeCheck(settings, deps)
+    if (!tape.ok) return tape
+    warning = tape.warning
+  }
   try {
     const result = await deps.sendToPrinter(job)
-    if (result.ok) return result
+    if (result.ok) return { ok: true, warning }
     return { ok: false, message: result.reason ? `the printer reported "${result.reason}".` : 'the printer reported a failure.' }
   } catch (error) {
     return { ok: false, message: errorText(error) }
   }
+}
+
+/** Driver widths and lengths are in tenths of a mm and may round (23.9 for 24 mm tape). */
+const PAPER_TOLERANCE_MM = 0.5
+
+/** Checks the driver's default paper against the Tape Size in `settings` (length × tape width). */
+async function tapeCheck(
+  settings: PrintSettings,
+  deps: Pick<PrintServiceDeps, 'readDefaultPaper'>
+): Promise<{ ok: true; warning: string | null } | { ok: false; message: string }> {
+  const { widthMm: lengthMm, heightMm: tapeWidthMm } = settings.labelSize
+  let paper: DriverPaper | null
+  try {
+    paper = await deps.readDefaultPaper(settings.printerName)
+  } catch {
+    paper = null
+  }
+  if (paper === null) {
+    return { ok: true, warning: `Could not check the tape width; check the printer is set to ${tapeWidthMm} mm tape.` }
+  }
+  const widthOff = Math.abs(paper.widthMm - tapeWidthMm) > PAPER_TOLERANCE_MM
+  const lengthOff = paper.lengthMm !== null && Math.abs(paper.lengthMm - lengthMm) > PAPER_TOLERANCE_MM
+  if (lengthOff) {
+    return {
+      ok: false,
+      message: `The printer is set to ${mm(paper.widthMm)} mm tape, ${mm(paper.lengthMm!)} mm long; set ${tapeWidthMm} mm tape, ${lengthMm} mm long in its Printing preferences.`
+    }
+  }
+  if (widthOff) return { ok: false, message: `The printer is set to ${mm(paper.widthMm)} mm tape; set ${tapeWidthMm} mm in its Printing preferences.` }
+  return { ok: true, warning: null }
+}
+
+/** A driver length in mm, to a tenth (`23.9`, `36`). */
+function mm(value: number): string {
+  return String(Number(value.toFixed(1)))
 }
 
 function isCustomLabelRequest(value: unknown): value is CustomLabelRequest {

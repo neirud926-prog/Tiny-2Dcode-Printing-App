@@ -8,6 +8,15 @@ import type { LabelPrintJob } from '../render/printJob'
 /** What the printer driver said about a job. */
 export type DriverResult = { ok: true } | { ok: false; reason: string }
 
+/**
+ * A printer driver's default paper (from its Printing preferences), in mm; `lengthMm` is null when
+ * the driver reports no length.
+ */
+export interface DriverPaper {
+  readonly widthMm: number
+  readonly lengthMm: number | null
+}
+
 export interface FileDialogFilter {
   readonly name: string
   readonly extensions: readonly string[]
@@ -32,6 +41,8 @@ export interface AppHost {
   chooseFile(options: FileDialogOptions): Promise<string | null>
   /** The installed printers. */
   listPrinters(): Promise<PrinterChoice[]>
+  /** The default paper of the printer named `printerName`, or null if it cannot be read. */
+  readDefaultPaper(printerName: string): Promise<DriverPaper | null>
   /** Prints the job silently; resolves with the driver's result. */
   sendToPrinter(job: LabelPrintJob): Promise<DriverResult>
 }
