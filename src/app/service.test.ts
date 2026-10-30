@@ -154,6 +154,36 @@ describe('Tape Sizes in the app', () => {
     expect(jobs[1].html).toContain('TEST01')
   })
 
+  it('take Templates only with the code and text inside the printable band, and log their Custom Label prints as usual', async () => {
+    const folder = await tempFolder()
+    const { api, jobs } = await pc(folder, 'PHARM-01')
+    const added = await api.addLabelSize({ kind: 'tape', name: 'Bins', tapeWidthMm: 24, lengthMm: 50 })
+    const tape = added.ok ? added.sizes[1].id : ''
+    const design = { ...SHELF_BIN, labelSizeId: tape, code: { ...SHELF_BIN.code, yMm: 12 }, texts: SHELF_BIN.texts.map((text) => ({ ...text, yMm: text.yMm - 2 })) }
+    // 0.5 mm from the tape edge is outside the band (0.71 mm), though 1 mm inside a die-cut label is not asked of tape.
+    const high = { ...design, texts: [{ ...design.texts[0], yMm: 0.5 }, design.texts[1]] }
+    expect(await api.saveTemplate(high)).toEqual({ ok: false, message: 'Line 1 must be inside the printable band of the tape, at least 1 mm from the label ends.' })
+    const narrow = await api.addLabelSize({ kind: 'tape', name: '', tapeWidthMm: 9, lengthMm: 50 })
+    const nine = narrow.ok ? narrow.sizes.find((size) => size.heightMm === 9)!.id : ''
+    expect(await api.saveTemplate({ ...design, labelSizeId: nine, texts: [], code: { ...design.code, yMm: 4.5, moduleSize: 'small' } })).toEqual({
+      ok: false,
+      message: 'The code with its quiet zone is taller than the printable band of 9 mm tape (7.5 mm).'
+    })
+
+    const saved = await api.saveTemplate(design)
+    if (!saved.ok) throw new Error(saved.message)
+    expect((await api.savePrinterSettings(settingsFor(tape, {}, 360))).ok).toBe(true)
+    expect(await api.printCustomLabel({ templateId: saved.template!.id, symbology: 'qr', codeValue: 'BIN-4', texts: ['top'], copies: 1 })).toEqual({
+      ok: true,
+      message: `Printed 1 label on ${printer}.`,
+      warning: null
+    })
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0].options).toMatchObject({ pageSize: null })
+    const printLog = (await readdir(join(folder, 'logs'))).find((name) => name.startsWith('print-log-'))!
+    expect(parseCsvLine(linesOf(await readFile(join(folder, 'logs', printLog), 'utf8'))[1]).slice(9)).toEqual(['Custom', 'Shelf bin', 'BIN-4', 'PHARMACY | top'])
+  })
+
   it('read stored sizes without a kind as die-cut Labels', async () => {
     const folder = await tempFolder()
     await writeSealed(join(folder, 'labelsizes.dat'), [{ id: 'shelf', name: 'Shelf', widthMm: 50, heightMm: 30 }])
