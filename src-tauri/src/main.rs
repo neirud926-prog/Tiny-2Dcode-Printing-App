@@ -5,6 +5,7 @@
 // No console window in a release build.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod paper;
 mod printing;
 mod scope;
 
@@ -233,6 +234,12 @@ async fn list_printers() -> Result<Vec<printing::PrinterChoice>, String> {
     printing::list_printers()
 }
 
+/// The printer's default paper in its Printing preferences, or null (`readDefaultPaper` in the host).
+#[tauri::command]
+async fn default_paper(printer_name: String) -> Option<printing::DriverPaper> {
+    printing::default_paper(&printer_name)
+}
+
 #[tauri::command]
 async fn print_label(app: AppHandle, job: printing::LabelPrintJob) -> Result<(), String> {
     printing::print_label(app, job).await
@@ -302,6 +309,7 @@ fn main() {
             startup_info,
             choose_file,
             list_printers,
+            default_paper,
             print_label
         ])
         .run(tauri::generate_context!())

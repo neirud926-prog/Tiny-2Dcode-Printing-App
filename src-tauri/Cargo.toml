@@ -19,7 +19,7 @@ serde = { version = "1", features = ["derive"] }
 # GetComputerNameExW: the DNS host name, which Node's os.hostname() gives the Electron app.
 windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"] }
 # Printing (printing.rs): the same windows and webview2-com versions wry uses, so the COM types match.
-windows = { version = "0.62.2", features = ["Win32_Graphics_Printing"] }
+windows = { version = "0.62.2", features = ["Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Storage_Xps"] }
 webview2-com = "0.39.1"
 
 [dev-dependencies]

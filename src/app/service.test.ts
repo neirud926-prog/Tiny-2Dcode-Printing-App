@@ -13,6 +13,7 @@ import type { CustomLabelRequest } from '../render/customLabel'
 import type { LabelPrintJob } from '../render/printJob'
 import { SMALL_LABEL, type PcSettings } from '../render/printSettings'
 import type { PreloadApi } from '../preload/api'
+import type { DriverPaper } from './host'
 import { createAppService } from './service'
 
 const printer = 'ZDesigner GX420t'
@@ -23,9 +24,13 @@ const itemListFixture = join(__dirname, '../../test-fixtures/item_phq-synthetic.
 
 /**
  * The app on one PC over a shared data folder, with a fake printer that records each job; the file
- * dialog returns `chosenFile` (null: cancelled).
+ * dialog returns `chosenFile` (null: cancelled) and the driver's default paper is `paper` (24 mm tape unless given).
  */
-async function pc(dataFolder: string, pcName: string, chosenFile: string | null = null): Promise<{ api: PreloadApi; jobs: LabelPrintJob[] }> {
+async function pc(
+  dataFolder: string,
+  pcName: string,
+  { chosenFile = null, paper = { widthMm: 24, lengthMm: null } }: { chosenFile?: string | null; paper?: DriverPaper | null } = {}
+): Promise<{ api: PreloadApi; jobs: LabelPrintJob[] }> {
   const jobs: LabelPrintJob[] = []
   const api = createAppService({
     dataFolder,
@@ -33,6 +38,7 @@ async function pc(dataFolder: string, pcName: string, chosenFile: string | null 
     windowsUser: 'chantm',
     chooseFile: async () => chosenFile,
     listPrinters: async () => [{ name: printer, displayName: printer }],
+    readDefaultPaper: async () => paper,
     sendToPrinter: async (job) => {
       jobs.push(job)
       return { ok: true }
@@ -154,6 +160,23 @@ describe('Tape Sizes in the app', () => {
     expect(jobs[1].html).toContain('TEST01')
   })
 
+  it("refuse a Custom Label when the driver is set to another tape, and warn when it reports none", async () => {
+    for (const [paper, outcome] of [
+      [{ widthMm: 36, lengthMm: null }, { ok: false, message: 'Not printed: The printer is set to 36 mm tape; set 24 mm in its Printing preferences.' }],
+      [null, { ok: true, message: `Printed 1 label on ${printer}.`, warning: 'Could not check the tape width; check the printer is set to 24 mm tape.' }]
+    ] as const) {
+      const { api, jobs } = await pc(await tempFolder(), 'PHARM-01', { paper })
+      const added = await api.addLabelSize({ kind: 'tape', name: 'Bins', tapeWidthMm: 24, lengthMm: 50 })
+      const tape = added.ok ? added.sizes[1].id : ''
+      const design = { ...SHELF_BIN, labelSizeId: tape, code: { ...SHELF_BIN.code, yMm: 12 }, texts: SHELF_BIN.texts.map((text) => ({ ...text, yMm: text.yMm - 2 })) }
+      const saved = await api.saveTemplate(design)
+      if (!saved.ok) throw new Error(saved.message)
+      expect((await api.savePrinterSettings(settingsFor(tape))).ok).toBe(true)
+      expect(await api.printCustomLabel({ templateId: saved.template!.id, symbology: 'datamatrix', codeValue: 'BIN-4', texts: ['top'], copies: 1 })).toEqual(outcome)
+      expect(jobs).toHaveLength(outcome.ok ? 1 : 0)
+    }
+  })
+
   it('take Templates only with the code and text inside the printable band, and log their Custom Label prints as usual', async () => {
     const folder = await tempFolder()
     const { api, jobs } = await pc(folder, 'PHARM-01')
@@ -228,7 +251,7 @@ describe('the loaded Label Size', () => {
   })
 
   it('must be the Small Label or 18, 24 or 36 mm tape for a GTIN Label', async () => {
-    const { api, jobs } = await pc(await tempFolder(), 'PHARM-01', itemListFixture)
+    const { api, jobs } = await pc(await tempFolder(), 'PHARM-01', { chosenFile: itemListFixture })
     expect((await api.importItemList()).status).toBe('imported')
     const refusal = 'Not printed: GTIN Labels print on the Small Label (34.4 × 25 mm) or on 18, 24 or 36 mm tape. Change the label in Settings.'
     const shelf = await addSize(api, 'Shelf', 50, 30)
@@ -246,7 +269,7 @@ describe('GTIN Labels on tape', () => {
   const printable: LabelRequest = { ...request, expiry: '31122030' }
 
   async function onTape(tapeWidthMm: number, lengthMm: number, printerResolution: PcSettings['printerResolution'] = 360) {
-    const app = await pc(await tempFolder(), 'PHARM-01', itemListFixture)
+    const app = await pc(await tempFolder(), 'PHARM-01', { chosenFile: itemListFixture, paper: { widthMm: tapeWidthMm, lengthMm: null } })
     expect((await app.api.importItemList()).status).toBe('imported')
     const tape = await addTape(app.api, tapeWidthMm, lengthMm)
     expect((await app.api.savePrinterSettings(settingsFor(tape, { [tape]: { offsetXmm: 0, offsetYmm: -3 * dotMm(printerResolution) } }, printerResolution))).ok).toBe(true)

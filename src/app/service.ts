@@ -49,7 +49,12 @@ import {
 export function createAppService(host: AppHost): PreloadApi {
   const { dataFolder, pcName } = host
   const context: PrintContext = { dataFolder, pcName, windowsUser: host.windowsUser }
-  const deps: PrintServiceDeps = { now: () => new Date(), sendToPrinter: (job) => host.sendToPrinter(job), appendLog: appendPrintLog }
+  const deps: PrintServiceDeps = {
+    now: () => new Date(),
+    readDefaultPaper: (printerName) => host.readDefaultPaper(printerName),
+    sendToPrinter: (job) => host.sendToPrinter(job),
+    appendLog: appendPrintLog
+  }
   const itemLists = createItemListSource(dataFolder)
   const stockOnhand = createStockOnhandSource(dataFolder)
 
